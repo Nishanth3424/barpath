@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Results - Barpath</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script>tailwind.config = { darkMode: 'class' }</script>
+</head>
+<body class="min-h-screen bg-white dark:bg-gray-950 text-gray-900 dark:text-white pb-20">
+
+    <div class="max-w-2xl mx-auto px-6 py-8">
+        <div class="flex items-center justify-between mb-8">
+            <button onclick="window.location.href='history.html'" class="p-2 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-800">
+                <i data-lucide="arrow-left" class="w-6 h-6"></i> <span class="ml-2 text-sm font-bold">Back to History</span>
+            </button>
+        </div>
+
+        <div id="content">
+            <div class="text-center py-20">
+                <p>Loading results...</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        lucide.createIcons();
+        if (localStorage.getItem('darkMode') === 'true') document.documentElement.classList.add('dark');
+
+        // --- DATABASE HELPER ---
+        const dbName = "BarpathDB";
+        const storeName = "videos";
+        const DB_VERSION = 2; // Must match upload.html
+
+        function openDB() {
+            return new Promise((resolve, reject) => {
+                const request = indexedDB.open(dbName, DB_VERSION);
+                
+                request.onupgradeneeded = (e) => {
+                    const db = e.target.result;
+                    // Only create the store if it doesn't exist
+                    if (!db.objectStoreNames.contains(storeName)) {
+                        db.createObjectStore(storeName);
+                        console.log("✅ Created IndexedDB store:", storeName);
+                    }
+                };
+                
+                request.onsuccess = (e) => {
+                    console.log("✅ IndexedDB opened successfully");
+                    resolve(e.target.result);
+                };
+                
+                request.onerror = (e) => {
+                    console.error("❌ IndexedDB error:", e.target.error);
+                    reject(e.target.error);
+                };
+            });
+        }
+
+        function getVideoFromDB(id) {
+            return new Promise(async (resolve) => {
+                try {
+                    const db = await openDB();
+                    
+                    // Check if the store exists before accessing
+                    if (!db.objectStoreNames.contains(storeName)) {
+                        console.warn("⚠️ Video store not found in database");
+                        resolve(null);
+                        return;
+                    }
+                    
+                    const tx = db.transaction(storeName, "readonly");
+                    const store = tx.objectStore(storeName);
+                    const request = store.get(id);
+                    
+                    request.onsuccess = () => {
+                        if (request.result) {
+                            console.log("✅ Video found in database");
+                        } else {
+                            console.log("ℹ️ Video not found for ID:", id);
+                        }
+                        resolve(request.result);
+                    };
+                    request.onerror = () => {
+                        console.warn("⚠️ Error reading video from DB");
+                        resolve(null);
+                    };
+                } catch(e) { 
+                    console.warn("⚠️ Database error:", e);
+                    resolve(null); 
+                }
+            });
+        }
+
+        // --- MAIN LOAD ---
+        (async function init() {
+            const rawData = localStorage.getItem('lastResult');
+            const container = document.getElementById('content');
+
+            if (!rawData) {
+                container.innerHTML = `<div class="text-center"><p>No results found.</p><a href="upload.html" class="text-blue-500 underline">Analyze a video</a></div>`;
+                return;
+            }
+
+            const data = JSON.parse(rawData);
+            const liftId = parseInt(localStorage.getItem('lastResultId')); // We get the ID saved by history.html
+
+            // TRY TO FIND VIDEO IN DATABASE
+            let videoBase64 = null;
+            if (liftId) {
+                videoBase64 = await getVideoFromDB(liftId);
+            }
+
+            const m = data.metrics || {};
+            const graphs = data.graphs || {};
+            const critique = data.critique || [];
+            const videoSrc = videoBase64 ? `data:video/mp4;base64,${videoBase64}` : null;
+
+            container.innerHTML = `
+                ${videoSrc ? `
+                <div class="mb-8 rounded-2xl overflow-hidden shadow-lg border border-gray-200 dark:border-gray-800 bg-black aspect-video relative">
+                    <video controls autoplay loop muted playsinline class="w-full h-full object-contain">
+                        <source src="${videoSrc}" type="video/mp4">
+                    </video>
+                    <div class="absolute top-4 left-4 bg-black/50 backdrop-blur px-3 py-1 rounded-lg text-white text-xs font-bold">
+                        AI TRACKING OVERLAY
+                    </div>
+                </div>
+                ` : `
+                <div class="mb-8 p-8 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl text-center text-gray-500">
+                    <i data-lucide="video-off" class="w-8 h-8 mx-auto mb-2 opacity-50"></i>
+                    <p>Video expired or not found (Only last 3 saved).</p>
+                </div>
+                `}
+
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+                    <div class="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-2xl border border-blue-100 dark:border-blue-800">
+                        <div class="text-xs text-blue-600 dark:text-blue-400 font-medium mb-1 uppercase">Score</div>
+                        <div class="text-2xl font-bold text-blue-700 dark:text-blue-300">${Math.round(m.technique_score || 0)}</div>
+                    </div>
+                    <div class="p-4 bg-gray-50 dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800">
+                        <div class="text-xs text-gray-500 font-medium mb-1 uppercase">Peak Vel</div>
+                        <div class="text-2xl font-bold">${Math.round(m.peak_velocity || 0)} <span class="text-xs text-gray-400">px/s</span></div>
+                    </div>
+                    <div class="p-4 bg-gray-50 dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800">
+                        <div class="text-xs text-gray-500 font-medium mb-1 uppercase">Duration</div>
+                        <div class="text-2xl font-bold">${(m.duration || 0).toFixed(1)} <span class="text-xs text-gray-400">s</span></div>
+                    </div>
+                    <div class="p-4 bg-gray-50 dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800">
+                        <div class="text-xs text-gray-500 font-medium mb-1 uppercase">Path Len</div>
+                        <div class="text-2xl font-bold">${Math.round(m.bar_path_length || 0)}</div>
+                    </div>
+                </div>
+
+                ${critique.length > 0 ? `
+                <div class="mb-8 p-6 bg-orange-50 dark:bg-orange-900/10 rounded-2xl border border-orange-100 dark:border-orange-900/30">
+                    <h3 class="font-bold text-orange-800 dark:text-orange-200 mb-4 flex items-center gap-2">
+                        <i data-lucide="alert-circle" class="w-5 h-5"></i> AI Feedback
+                    </h3>
+                    <ul class="space-y-3">
+                        ${critique.map(c => `
+                            <li class="flex items-start gap-3 text-sm text-orange-900 dark:text-orange-100">
+                                <span class="mt-1.5 w-1.5 h-1.5 rounded-full bg-orange-500 flex-shrink-0"></span>
+                                ${c}
+                            </li>
+                        `).join('')}
+                    </ul>
+                </div>
+                ` : ''}
+
+                <div class="space-y-8">
+                    ${renderGraph(graphs.barbell_xy_stable_path, "Bar Path Trajectory", "This view shows the bar's path from the side. A vertical line is ideal.")}
+                    ${renderGraph(graphs.vel_y_smooth, "Vertical Velocity", "Shows the speed of the bar going up. Look for a smooth double peak.")}
+                    ${renderGraph(graphs.accel_y_smooth, "Vertical Acceleration", "Shows force production. Sharp spikes indicate explosive power.")}
+                </div>
+            `;
+            lucide.createIcons();
+        })();
+
+        function renderGraph(base64, title, desc) {
+            if (!base64) return '';
+            return `
+                <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl overflow-hidden">
+                    <div class="p-4 border-b border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50">
+                        <h3 class="font-semibold text-gray-900 dark:text-white">${title}</h3>
+                    </div>
+                    <div class="p-4 bg-white">
+                        <img src="data:image/png;base64,${base64}" class="w-full h-auto rounded-lg">
+                    </div>
+                    <div class="p-4 bg-blue-50 dark:bg-blue-900/10 text-sm text-blue-800 dark:text-blue-200">
+                        <span class="font-bold">ðŸ’¡ Analysis:</span> ${desc}
+                    </div>
+                </div>
+            `;
+        }
+    </script>
+</body>
+</html>
