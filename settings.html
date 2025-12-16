@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Settings</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script>tailwind.config = { darkMode: 'class' }</script>
+</head>
+<body class="bg-gray-50 dark:bg-gray-950 min-h-screen pb-24 text-gray-900 dark:text-white">
+    
+    <div class="max-w-lg mx-auto px-6 py-8">
+        <h1 class="text-3xl font-bold mb-6">Settings</h1>
+        
+        <div class="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 overflow-hidden">
+            <div class="p-4 flex justify-between items-center border-b border-gray-100 dark:border-gray-800">
+                <div class="flex items-center gap-3">
+                    <i data-lucide="moon" class="w-5 h-5 text-gray-500"></i>
+                    <span>Dark Mode</span>
+                </div>
+                <button onclick="toggleDark()" class="px-4 py-2 bg-gray-100 dark:bg-gray-800 rounded-lg text-sm font-medium hover:bg-gray-200 transition-colors">Toggle</button>
+            </div>
+
+            <div class="p-4 flex justify-between items-center border-b border-gray-100 dark:border-gray-800">
+                <div class="flex items-center gap-3">
+                    <i data-lucide="database" class="w-5 h-5 text-gray-500"></i>
+                    <span>Storage Used</span>
+                </div>
+                <span id="storageInfo" class="text-sm text-gray-500">Calculating...</span>
+            </div>
+
+            <div class="p-4 flex justify-between items-center text-red-600">
+                <div class="flex items-center gap-3">
+                    <i data-lucide="trash-2" class="w-5 h-5"></i>
+                    <span>Clear All Data</span>
+                </div>
+                <button onclick="clearData()" class="px-4 py-2 bg-red-50 hover:bg-red-100 dark:bg-red-900/20 dark:hover:bg-red-900/40 rounded-lg text-sm font-medium transition-colors">Clear</button>
+            </div>
+        </div>
+
+        <!-- About Section -->
+        <div class="mt-8 bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800 p-6">
+            <h2 class="font-semibold mb-4 flex items-center gap-2">
+                <i data-lucide="info" class="w-5 h-5 text-blue-500"></i>
+                About Barpath
+            </h2>
+            <p class="text-sm text-gray-600 dark:text-gray-400 leading-relaxed mb-4">
+                Barpath uses AI-powered computer vision to analyze your weightlifting technique. 
+                Upload or record your lifts to get detailed feedback on bar path, velocity, and form.
+            </p>
+            <div class="flex gap-2 flex-wrap">
+                <span class="px-2 py-1 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 text-xs font-medium rounded">YOLOv11</span>
+                <span class="px-2 py-1 bg-purple-50 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 text-xs font-medium rounded">MediaPipe</span>
+                <span class="px-2 py-1 bg-green-50 dark:bg-green-900/30 text-green-600 dark:text-green-400 text-xs font-medium rounded">Modal GPU</span>
+            </div>
+        </div>
+        
+        <div class="mt-8 text-center text-sm text-gray-400">
+            Barpath v2.0
+        </div>
+    </div>
+
+    <!-- Nav -->
+    <nav class="fixed bottom-0 left-0 right-0 bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-800 z-50 pb-safe">
+        <div class="max-w-lg mx-auto px-4 h-16 flex items-center justify-around">
+            <a href="index.html" class="flex flex-col items-center gap-1 text-gray-500 hover:text-gray-900 dark:text-gray-400">
+                <i data-lucide="home" class="w-6 h-6"></i>
+                <span class="text-xs font-medium">Home</span>
+            </a>
+            <a href="history.html" class="flex flex-col items-center gap-1 text-gray-500 hover:text-gray-900 dark:text-gray-400">
+                <i data-lucide="history" class="w-6 h-6"></i>
+                <span class="text-xs font-medium">History</span>
+            </a>
+            <a href="settings.html" class="flex flex-col items-center gap-1 text-blue-600 dark:text-blue-400">
+                <i data-lucide="settings" class="w-6 h-6"></i>
+                <span class="text-xs font-medium">Settings</span>
+            </a>
+        </div>
+    </nav>
+
+    <script>
+        lucide.createIcons();
+        if (localStorage.getItem('darkMode') === 'true') document.documentElement.classList.add('dark');
+
+        function toggleDark() {
+            const isDark = document.documentElement.classList.toggle('dark');
+            localStorage.setItem('darkMode', isDark);
+        }
+        
+        function clearData() {
+            if(confirm("Delete all history and cached videos permanently? This cannot be undone.")) {
+                // Clear localStorage
+                localStorage.removeItem('liftHistory');
+                localStorage.removeItem('lastResult');
+                localStorage.removeItem('lastResultId');
+                
+                // Clear IndexedDB
+                const request = indexedDB.deleteDatabase('BarpathDB');
+                request.onsuccess = () => {
+                    alert("All data cleared successfully.");
+                    window.location.reload();
+                };
+                request.onerror = () => {
+                    alert("Cleared localStorage, but some cached data may remain.");
+                    window.location.reload();
+                };
+            }
+        }
+        
+        // Calculate storage used
+        async function calculateStorage() {
+            const infoEl = document.getElementById('storageInfo');
+            
+            try {
+                // LocalStorage size
+                let lsSize = 0;
+                for (let key in localStorage) {
+                    if (localStorage.hasOwnProperty(key)) {
+                        lsSize += localStorage[key].length * 2; // UTF-16 = 2 bytes per char
+                    }
+                }
+                
+                // IndexedDB size (approximate)
+                let idbSize = 0;
+                const dbRequest = indexedDB.open('BarpathDB', 1);
+                dbRequest.onsuccess = (e) => {
+                    const db = e.target.result;
+                    if (db.objectStoreNames.contains('videos')) {
+                        const tx = db.transaction('videos', 'readonly');
+                        const store = tx.objectStore('videos');
+                        const countReq = store.count();
+                        countReq.onsuccess = () => {
+                            const count = countReq.result;
+                            // Estimate ~5MB per video
+                            idbSize = count * 5 * 1024 * 1024;
+                            const total = lsSize + idbSize;
+                            infoEl.textContent = formatBytes(total);
+                        };
+                    } else {
+                        infoEl.textContent = formatBytes(lsSize);
+                    }
+                };
+                dbRequest.onerror = () => {
+                    infoEl.textContent = formatBytes(lsSize);
+                };
+            } catch (e) {
+                infoEl.textContent = 'Unknown';
+            }
+        }
+        
+        function formatBytes(bytes) {
+            if (bytes === 0) return '0 B';
+            const k = 1024;
+            const sizes = ['B', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+        }
+        
+        calculateStorage();
+    </script>
+</body>
+</html>

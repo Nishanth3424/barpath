@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>History - Barpath</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script>tailwind.config = { darkMode: 'class' }</script>
+</head>
+<body class="bg-gray-50 dark:bg-gray-950 min-h-screen pb-24 text-gray-900 dark:text-white">
+    
+    <div class="max-w-lg mx-auto px-6 py-8">
+        <h1 class="text-3xl font-bold mb-2">History</h1>
+        <p class="text-gray-500 dark:text-gray-400 mb-8">Your recent lift analyses</p>
+
+        <div id="historyList" class="space-y-4">
+            <div class="text-center py-8 text-gray-400">
+                Loading...
+            </div>
+        </div>
+    </div>
+
+    <!-- Nav -->
+    <nav class="fixed bottom-0 left-0 right-0 bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-800 z-50">
+        <div class="max-w-lg mx-auto px-4 h-16 flex items-center justify-around">
+            <a href="index.html" class="flex flex-col items-center gap-1 text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200">
+                <i data-lucide="home" class="w-6 h-6"></i>
+                <span class="text-xs font-medium">Home</span>
+            </a>
+            <a href="history.html" class="flex flex-col items-center gap-1 text-blue-600 dark:text-blue-400">
+                <i data-lucide="history" class="w-6 h-6"></i>
+                <span class="text-xs font-medium">History</span>
+            </a>
+            <a href="settings.html" class="flex flex-col items-center gap-1 text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200">
+                <i data-lucide="settings" class="w-6 h-6"></i>
+                <span class="text-xs font-medium">Settings</span>
+            </a>
+        </div>
+    </nav>
+
+    <script>
+        // Initialize icons
+        lucide.createIcons();
+        
+        // Apply dark mode
+        if (localStorage.getItem('darkMode') === 'true') {
+            document.documentElement.classList.add('dark');
+        }
+
+        // Load and display history
+        function loadHistory() {
+            const listContainer = document.getElementById('historyList');
+            
+            let history = [];
+            try {
+                const stored = localStorage.getItem('liftHistory');
+                if (stored) {
+                    history = JSON.parse(stored);
+                }
+            } catch (e) {
+                console.error('Error loading history:', e);
+                history = [];
+            }
+
+            if (!history || history.length === 0) {
+                listContainer.innerHTML = `
+                    <div class="text-center py-12 bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800">
+                        <i data-lucide="clock" class="w-12 h-12 mx-auto text-gray-300 dark:text-gray-600 mb-4"></i>
+                        <p class="text-gray-500 dark:text-gray-400 mb-4">No history yet</p>
+                        <a href="upload.html" class="inline-block px-6 py-2 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-colors">
+                            Analyze Your First Lift
+                        </a>
+                    </div>
+                `;
+                lucide.createIcons();
+                return;
+            }
+
+            listContainer.innerHTML = history.map((lift, index) => {
+                const date = new Date(lift.date);
+                const dateStr = date.toLocaleDateString('en-US', { 
+                    month: 'short', 
+                    day: 'numeric',
+                    year: date.getFullYear() !== new Date().getFullYear() ? 'numeric' : undefined
+                });
+                const timeStr = date.toLocaleTimeString('en-US', { 
+                    hour: 'numeric', 
+                    minute: '2-digit'
+                });
+                
+                return `
+                    <div class="bg-white dark:bg-gray-900 p-4 rounded-2xl border border-gray-200 dark:border-gray-800 hover:border-blue-500 dark:hover:border-blue-500 transition-all cursor-pointer shadow-sm"
+                         onclick="viewLift(${index})">
+                        <div class="flex justify-between items-start mb-3">
+                            <div>
+                                <span class="inline-block px-2 py-1 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 text-xs font-bold rounded-md uppercase tracking-wide mb-1">
+                                    ${lift.lift || 'clean'}
+                                </span>
+                                <div class="text-gray-900 dark:text-white font-medium text-sm">${dateStr}</div>
+                                <div class="text-gray-400 text-xs">${timeStr}</div>
+                            </div>
+                            <div class="text-right">
+                                <div class="text-3xl font-bold text-gray-900 dark:text-white">${lift.score || 0}</div>
+                                <div class="text-xs text-gray-400 uppercase">Score</div>
+                            </div>
+                        </div>
+                        <div class="flex gap-4 pt-3 border-t border-gray-100 dark:border-gray-800">
+                            <div>
+                                <div class="text-xs text-gray-400">Peak Velocity</div>
+                                <div class="font-semibold text-gray-700 dark:text-gray-300">${lift.velocity || 0} <span class="text-xs text-gray-400">px/s</span></div>
+                            </div>
+                            <div>
+                                <div class="text-xs text-gray-400">Duration</div>
+                                <div class="font-semibold text-gray-700 dark:text-gray-300">${lift.duration || '0.0'}s</div>
+                            </div>
+                            <div class="ml-auto flex items-center text-gray-400">
+                                <span class="text-xs mr-1">View</span>
+                                <i data-lucide="chevron-right" class="w-4 h-4"></i>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+            
+            lucide.createIcons();
+        }
+
+        // View a specific lift
+        function viewLift(index) {
+            try {
+                const history = JSON.parse(localStorage.getItem('liftHistory') || '[]');
+                const lift = history[index];
+                
+                if (lift && lift.resultData) {
+                    localStorage.setItem('lastResult', JSON.stringify(lift.resultData));
+                    localStorage.setItem('lastResultId', lift.id ? lift.id.toString() : '');
+                    window.location.href = 'results.html';
+                } else {
+                    alert('Could not load this lift. Data may be corrupted.');
+                }
+            } catch (e) {
+                console.error('Error viewing lift:', e);
+                alert('Error loading lift data.');
+            }
+        }
+
+        // Load history on page load
+        loadHistory();
+    </script>
+</body>
+</html>

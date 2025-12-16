@@ -1,0 +1,649 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Record - Barpath</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script>tailwind.config = { darkMode: 'class' }</script>
+    <style>
+        /* Pulse animation for recording */
+        @keyframes pulse-red {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+            50% { box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
+        }
+        .recording-pulse {
+            animation: pulse-red 1.5s infinite;
+        }
+        
+        /* Timeline scrubber */
+        .timeline-container {
+            position: relative;
+            height: 60px;
+            background: #1f2937;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        
+        /* The yellow/white selection box */
+        .selection-box {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            background: rgba(234, 179, 8, 0.3);
+            border: 3px solid #eab308;
+            border-radius: 6px;
+            cursor: move;
+        }
+        
+        /* Left and right handles */
+        .handle {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            width: 16px;
+            background: #eab308;
+            cursor: ew-resize;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .handle-left {
+            left: 0;
+            border-radius: 6px 0 0 6px;
+        }
+        .handle-right {
+            right: 0;
+            border-radius: 0 6px 6px 0;
+        }
+        .handle::after {
+            content: '';
+            width: 4px;
+            height: 30px;
+            background: rgba(0,0,0,0.3);
+            border-radius: 2px;
+        }
+        
+        /* Playhead */
+        .playhead {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            width: 3px;
+            background: white;
+            pointer-events: none;
+            z-index: 10;
+        }
+        
+        /* Thumbnail strip */
+        .thumbnail-strip {
+            display: flex;
+            height: 100%;
+            pointer-events: none;
+        }
+        .thumbnail-strip canvas {
+            height: 100%;
+            flex-shrink: 0;
+        }
+    </style>
+</head>
+<body class="min-h-screen bg-gray-950 text-white">
+
+    <!-- STEP 1: Camera View -->
+    <div id="step-record" class="h-screen flex flex-col">
+        <!-- Header -->
+        <div class="absolute top-0 left-0 right-0 p-4 z-20 bg-gradient-to-b from-black/70 to-transparent">
+            <div class="flex justify-between items-center">
+                <button onclick="window.location.href='index.html'" class="p-2 rounded-full bg-white/20 backdrop-blur">
+                    <i data-lucide="arrow-left" class="w-6 h-6"></i>
+                </button>
+                <div id="recordingTimer" class="hidden px-4 py-2 bg-red-600 rounded-full font-mono font-bold text-lg">
+                    00:00
+                </div>
+                <div class="w-10"></div>
+            </div>
+        </div>
+
+        <!-- Camera Feed -->
+        <div class="flex-1 relative bg-black">
+            <video id="livePreview" autoplay playsinline muted class="w-full h-full object-cover"></video>
+            
+            <!-- Tips -->
+            <div class="absolute bottom-32 left-0 right-0 text-center px-6">
+                <p class="text-white/80 text-sm bg-black/50 backdrop-blur rounded-lg px-4 py-2 inline-block">
+                    📱 Position camera 6ft away • Film from the side
+                </p>
+            </div>
+        </div>
+
+        <!-- Record Button -->
+        <div class="absolute bottom-8 left-0 right-0 flex justify-center z-20">
+            <button id="recordBtn" onclick="toggleRecording()" 
+                class="w-20 h-20 rounded-full border-4 border-white flex items-center justify-center transition-all">
+                <div id="recordInner" class="w-14 h-14 rounded-full bg-red-500 transition-all"></div>
+            </button>
+        </div>
+    </div>
+
+    <!-- STEP 2: Trim View -->
+    <div id="step-trim" class="hidden min-h-screen flex flex-col">
+        <!-- Header -->
+        <div class="p-4 flex items-center gap-4 border-b border-gray-800">
+            <button onclick="goBackToRecord()" class="p-2 rounded-xl hover:bg-gray-800">
+                <i data-lucide="arrow-left" class="w-6 h-6"></i>
+            </button>
+            <div class="flex-1">
+                <h1 class="text-lg font-bold">Select Your Lift</h1>
+                <p class="text-xs text-gray-400">Drag the yellow handles to select 5-10 seconds</p>
+            </div>
+        </div>
+
+        <!-- Video Preview -->
+        <div class="flex-1 bg-black flex items-center justify-center p-4">
+            <video id="recordedPreview" playsinline class="max-h-full max-w-full rounded-lg"></video>
+        </div>
+        
+        <!-- Time Display -->
+        <div class="px-4 py-2 flex justify-between text-sm">
+            <span class="text-gray-400">Selected: <span id="clipDuration" class="text-yellow-400 font-mono font-bold">0.0s</span></span>
+            <span class="text-gray-400">Total: <span id="totalDuration" class="text-white font-mono">0:00</span></span>
+        </div>
+
+        <!-- Timeline Scrubber (iPhone-style) -->
+        <div class="px-4 pb-4">
+            <div class="timeline-container" id="timeline">
+                <!-- Thumbnails will be drawn here -->
+                <div class="thumbnail-strip" id="thumbnailStrip"></div>
+                
+                <!-- Selection Box (the yellow handles) -->
+                <div class="selection-box" id="selectionBox">
+                    <div class="handle handle-left" id="handleLeft"></div>
+                    <div class="handle handle-right" id="handleRight"></div>
+                </div>
+                
+                <!-- Playhead -->
+                <div class="playhead" id="playhead"></div>
+            </div>
+            
+            <!-- Time labels -->
+            <div class="flex justify-between text-xs text-gray-500 mt-2">
+                <span id="startLabel">0:00</span>
+                <span id="endLabel">0:00</span>
+            </div>
+        </div>
+
+        <!-- Controls -->
+        <div class="p-4 space-y-4 border-t border-gray-800">
+            <!-- Lift Type -->
+            <div>
+                <label class="block text-xs font-medium mb-2 text-gray-400">LIFT TYPE</label>
+                <div class="grid grid-cols-4 gap-2">
+                    <button onclick="setLift('clean')" id="btn-clean" 
+                        class="lift-btn p-2 rounded-lg border-2 border-yellow-500 bg-yellow-500/20 text-yellow-400 text-sm font-medium">
+                        Clean
+                    </button>
+                    <button onclick="setLift('snatch')" id="btn-snatch"
+                        class="lift-btn p-2 rounded-lg border-2 border-gray-700 bg-gray-800 text-gray-400 text-sm font-medium">
+                        Snatch
+                    </button>
+                    <button onclick="setLift('jerk')" id="btn-jerk"
+                        class="lift-btn p-2 rounded-lg border-2 border-gray-700 bg-gray-800 text-gray-400 text-sm font-medium">
+                        Jerk
+                    </button>
+                    <button onclick="setLift('squat')" id="btn-squat"
+                        class="lift-btn p-2 rounded-lg border-2 border-gray-700 bg-gray-800 text-gray-400 text-sm font-medium">
+                        Squat
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Buttons -->
+            <div class="flex gap-3">
+                <button onclick="previewClip()" class="flex-1 flex items-center justify-center gap-2 py-3 bg-gray-800 hover:bg-gray-700 rounded-xl font-medium transition-all">
+                    <i data-lucide="play" class="w-5 h-5"></i>
+                    Preview
+                </button>
+                <button id="analyzeBtn" onclick="analyzeClip()" 
+                    class="flex-[2] py-3 bg-yellow-500 hover:bg-yellow-600 text-black rounded-xl font-bold transition-all">
+                    Analyze Clip
+                </button>
+            </div>
+            
+            <!-- Progress -->
+            <div id="progressArea" class="hidden">
+                <div class="flex justify-between text-sm mb-2">
+                    <span id="progressText">Preparing...</span>
+                    <span id="progressPercent">0%</span>
+                </div>
+                <div class="w-full bg-gray-800 rounded-full h-2">
+                    <div id="progressBar" class="bg-yellow-500 h-2 rounded-full transition-all" style="width: 0%"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        lucide.createIcons();
+        if (localStorage.getItem('darkMode') === 'true') document.documentElement.classList.add('dark');
+
+        // ============ CONFIG ============
+        const API_URL = 'https://gamercheetah24--barpath-analyzer-v2-web-dev.modal.run/api';
+        
+        // ============ STATE ============
+        let mediaRecorder = null;
+        let recordedChunks = [];
+        let isRecording = false;
+        let recordingStartTime = null;
+        let timerInterval = null;
+        let recordedBlob = null;
+        let videoDuration = 0;
+        let currentLift = 'clean';
+        let stream = null;
+        
+        // Trim state
+        let trimStart = 0;
+        let trimEnd = 5;
+        let isDragging = null; // 'left', 'right', or 'box'
+        let dragStartX = 0;
+        let dragStartLeft = 0;
+        let dragStartRight = 0;
+
+        // ============ CAMERA SETUP ============
+        async function initCamera() {
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({
+                    video: { 
+                        facingMode: 'environment',
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 }
+                    },
+                    audio: false
+                });
+                
+                const video = document.getElementById('livePreview');
+                video.srcObject = stream;
+                
+            } catch (err) {
+                console.error('Camera error:', err);
+                alert('Camera access denied. Please allow camera access and reload the page.');
+            }
+        }
+
+        // ============ RECORDING ============
+        function toggleRecording() {
+            if (isRecording) {
+                stopRecording();
+            } else {
+                startRecording();
+            }
+        }
+
+        function startRecording() {
+            recordedChunks = [];
+            
+            // Try different codecs
+            let options = { mimeType: 'video/webm;codecs=vp8' };
+            if (!MediaRecorder.isTypeSupported(options.mimeType)) {
+                options = { mimeType: 'video/webm' };
+            }
+            if (!MediaRecorder.isTypeSupported(options.mimeType)) {
+                options = { mimeType: 'video/mp4' };
+            }
+            
+            try {
+                mediaRecorder = new MediaRecorder(stream, options);
+            } catch (e) {
+                mediaRecorder = new MediaRecorder(stream);
+            }
+            
+            mediaRecorder.ondataavailable = (e) => {
+                if (e.data.size > 0) {
+                    recordedChunks.push(e.data);
+                }
+            };
+            
+            mediaRecorder.onstop = () => {
+                const mimeType = mediaRecorder.mimeType || 'video/webm';
+                recordedBlob = new Blob(recordedChunks, { type: mimeType });
+                showTrimView();
+            };
+            
+            mediaRecorder.start(100);
+            isRecording = true;
+            recordingStartTime = Date.now();
+            
+            // UI Updates
+            document.getElementById('recordingTimer').classList.remove('hidden');
+            document.getElementById('recordInner').classList.add('recording-pulse');
+            document.getElementById('recordInner').style.borderRadius = '8px';
+            document.getElementById('recordInner').style.width = '32px';
+            document.getElementById('recordInner').style.height = '32px';
+            
+            timerInterval = setInterval(updateTimer, 100);
+        }
+
+        function stopRecording() {
+            if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+                mediaRecorder.stop();
+            }
+            
+            isRecording = false;
+            clearInterval(timerInterval);
+            
+            document.getElementById('recordingTimer').classList.add('hidden');
+            document.getElementById('recordInner').classList.remove('recording-pulse');
+            document.getElementById('recordInner').style.borderRadius = '50%';
+            document.getElementById('recordInner').style.width = '56px';
+            document.getElementById('recordInner').style.height = '56px';
+        }
+
+        function updateTimer() {
+            const elapsed = Math.floor((Date.now() - recordingStartTime) / 1000);
+            const mins = Math.floor(elapsed / 60).toString().padStart(2, '0');
+            const secs = (elapsed % 60).toString().padStart(2, '0');
+            document.getElementById('recordingTimer').textContent = `${mins}:${secs}`;
+        }
+
+        // ============ TRIM VIEW ============
+        function showTrimView() {
+            document.getElementById('step-record').classList.add('hidden');
+            document.getElementById('step-trim').classList.remove('hidden');
+            
+            const video = document.getElementById('recordedPreview');
+            video.src = URL.createObjectURL(recordedBlob);
+            video.muted = true;
+            
+            // Wait for metadata to load
+            video.onloadedmetadata = () => {
+                // Sometimes duration is Infinity initially, need to wait
+                if (!isFinite(video.duration) || video.duration === 0) {
+                    // Try seeking to end to get duration
+                    video.currentTime = 1e10;
+                    video.onseeked = () => {
+                        videoDuration = video.currentTime;
+                        video.currentTime = 0;
+                        video.onseeked = null;
+                        initializeTrimmer();
+                    };
+                } else {
+                    videoDuration = video.duration;
+                    initializeTrimmer();
+                }
+            };
+            
+            video.onerror = (e) => {
+                console.error('Video error:', e);
+                alert('Error loading recorded video. Please try recording again.');
+            };
+        }
+        
+        function initializeTrimmer() {
+            const video = document.getElementById('recordedPreview');
+            
+            console.log('Video duration:', videoDuration);
+            
+            // Set initial trim (first 5 seconds or full video if shorter)
+            trimStart = 0;
+            trimEnd = Math.min(5, videoDuration);
+            
+            document.getElementById('totalDuration').textContent = formatTime(videoDuration);
+            updateTrimUI();
+            generateThumbnails();
+            setupDragHandlers();
+            
+            // Update playhead during playback
+            video.ontimeupdate = () => {
+                const percent = (video.currentTime / videoDuration) * 100;
+                document.getElementById('playhead').style.left = percent + '%';
+            };
+            
+            video.play().catch(() => {});
+        }
+        
+        function generateThumbnails() {
+            // Create simple colored bars as thumbnail placeholders
+            const strip = document.getElementById('thumbnailStrip');
+            strip.innerHTML = '';
+            
+            const numThumbs = 20;
+            for (let i = 0; i < numThumbs; i++) {
+                const div = document.createElement('div');
+                div.style.flex = '1';
+                div.style.height = '100%';
+                div.style.background = `hsl(${200 + i * 3}, 30%, ${20 + (i % 3) * 5}%)`;
+                strip.appendChild(div);
+            }
+        }
+        
+        function setupDragHandlers() {
+            const timeline = document.getElementById('timeline');
+            const selectionBox = document.getElementById('selectionBox');
+            const handleLeft = document.getElementById('handleLeft');
+            const handleRight = document.getElementById('handleRight');
+            
+            handleLeft.onmousedown = handleLeft.ontouchstart = (e) => {
+                e.preventDefault();
+                isDragging = 'left';
+                dragStartX = e.touches ? e.touches[0].clientX : e.clientX;
+                dragStartLeft = trimStart;
+            };
+            
+            handleRight.onmousedown = handleRight.ontouchstart = (e) => {
+                e.preventDefault();
+                isDragging = 'right';
+                dragStartX = e.touches ? e.touches[0].clientX : e.clientX;
+                dragStartRight = trimEnd;
+            };
+            
+            selectionBox.onmousedown = selectionBox.ontouchstart = (e) => {
+                if (e.target === handleLeft || e.target === handleRight) return;
+                e.preventDefault();
+                isDragging = 'box';
+                dragStartX = e.touches ? e.touches[0].clientX : e.clientX;
+                dragStartLeft = trimStart;
+                dragStartRight = trimEnd;
+            };
+            
+            const onMove = (e) => {
+                if (!isDragging) return;
+                
+                const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+                const rect = timeline.getBoundingClientRect();
+                const deltaX = clientX - dragStartX;
+                const deltaTime = (deltaX / rect.width) * videoDuration;
+                
+                if (isDragging === 'left') {
+                    trimStart = Math.max(0, Math.min(trimEnd - 1, dragStartLeft + deltaTime));
+                } else if (isDragging === 'right') {
+                    trimEnd = Math.max(trimStart + 1, Math.min(videoDuration, dragStartRight + deltaTime));
+                } else if (isDragging === 'box') {
+                    const duration = dragStartRight - dragStartLeft;
+                    let newStart = dragStartLeft + deltaTime;
+                    newStart = Math.max(0, Math.min(videoDuration - duration, newStart));
+                    trimStart = newStart;
+                    trimEnd = newStart + duration;
+                }
+                
+                updateTrimUI();
+            };
+            
+            const onEnd = () => {
+                isDragging = null;
+            };
+            
+            document.addEventListener('mousemove', onMove);
+            document.addEventListener('touchmove', onMove);
+            document.addEventListener('mouseup', onEnd);
+            document.addEventListener('touchend', onEnd);
+        }
+        
+        function updateTrimUI() {
+            const selectionBox = document.getElementById('selectionBox');
+            const startPercent = (trimStart / videoDuration) * 100;
+            const endPercent = (trimEnd / videoDuration) * 100;
+            
+            selectionBox.style.left = startPercent + '%';
+            selectionBox.style.width = (endPercent - startPercent) + '%';
+            
+            document.getElementById('startLabel').textContent = formatTime(trimStart);
+            document.getElementById('endLabel').textContent = formatTime(trimEnd);
+            document.getElementById('clipDuration').textContent = (trimEnd - trimStart).toFixed(1) + 's';
+        }
+
+        function goBackToRecord() {
+            document.getElementById('step-trim').classList.add('hidden');
+            document.getElementById('step-record').classList.remove('hidden');
+            recordedBlob = null;
+        }
+
+        function formatTime(seconds) {
+            if (!isFinite(seconds) || isNaN(seconds)) return '0:00';
+            const mins = Math.floor(seconds / 60);
+            const secs = Math.floor(seconds % 60);
+            return `${mins}:${secs.toString().padStart(2, '0')}`;
+        }
+
+        function previewClip() {
+            const video = document.getElementById('recordedPreview');
+            video.currentTime = trimStart;
+            video.play();
+            
+            const checkEnd = setInterval(() => {
+                if (video.currentTime >= trimEnd || video.paused) {
+                    video.pause();
+                    clearInterval(checkEnd);
+                }
+            }, 50);
+        }
+
+        // ============ LIFT TYPE ============
+        function setLift(type) {
+            currentLift = type;
+            document.querySelectorAll('.lift-btn').forEach(btn => {
+                btn.classList.remove('border-yellow-500', 'bg-yellow-500/20', 'text-yellow-400');
+                btn.classList.add('border-gray-700', 'bg-gray-800', 'text-gray-400');
+            });
+            const active = document.getElementById('btn-' + type);
+            active.classList.remove('border-gray-700', 'bg-gray-800', 'text-gray-400');
+            active.classList.add('border-yellow-500', 'bg-yellow-500/20', 'text-yellow-400');
+        }
+
+        // ============ ANALYZE ============
+        async function analyzeClip() {
+            const clipDuration = trimEnd - trimStart;
+            
+            if (clipDuration < 1) {
+                alert('Please select at least 1 second of video.');
+                return;
+            }
+            
+            if (clipDuration > 30) {
+                alert('Please select a clip shorter than 30 seconds.');
+                return;
+            }
+            
+            const btn = document.getElementById('analyzeBtn');
+            const progress = document.getElementById('progressArea');
+            const bar = document.getElementById('progressBar');
+            const text = document.getElementById('progressText');
+            
+            btn.disabled = true;
+            btn.textContent = 'Processing...';
+            progress.classList.remove('hidden');
+            bar.style.width = '10%';
+            text.textContent = 'Preparing video...';
+            
+            try {
+                // Convert blob to base64
+                const reader = new FileReader();
+                const base64Promise = new Promise((resolve, reject) => {
+                    reader.onload = () => resolve(reader.result.split(',')[1]);
+                    reader.onerror = reject;
+                    reader.readAsDataURL(recordedBlob);
+                });
+                
+                const base64 = await base64Promise;
+                
+                text.textContent = 'Uploading to cloud...';
+                bar.style.width = '30%';
+                
+                const response = await fetch(API_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        video: base64,
+                        lift_type: currentLift,
+                        filename: `recording_${Date.now()}.webm`
+                    })
+                });
+                
+                text.textContent = 'Analyzing lift (~60s)...';
+                bar.style.width = '50%';
+                
+                if (!response.ok) {
+                    throw new Error(`Server error: ${response.status}`);
+                }
+                
+                const result = await response.json();
+                
+                bar.style.width = '100%';
+                
+                if (result.success) {
+                    text.textContent = 'Complete!';
+                    
+                    // Save to history (lightweight)
+                    const liftId = Date.now();
+                    try {
+                        const history = JSON.parse(localStorage.getItem('liftHistory') || '[]');
+                        
+                        // Don't save the video to localStorage to avoid quota issues
+                        const lightResult = {
+                            success: true,
+                            metrics: result.metrics || {},
+                            critique: result.critique || [],
+                            graphs: result.graphs || {}
+                        };
+                        
+                        history.unshift({
+                            id: liftId,
+                            date: new Date().toISOString(),
+                            lift: currentLift,
+                            filename: 'Recording',
+                            score: Math.round(result.metrics?.technique_score || 0),
+                            velocity: Math.round(result.metrics?.peak_velocity || 0),
+                            duration: (result.metrics?.duration || 0).toFixed(1),
+                            resultData: lightResult
+                        });
+                        
+                        while (history.length > 20) history.pop();
+                        localStorage.setItem('liftHistory', JSON.stringify(history));
+                    } catch (e) {
+                        console.warn('Could not save to history:', e);
+                    }
+                    
+                    localStorage.setItem('lastResult', JSON.stringify(result));
+                    localStorage.setItem('lastResultId', liftId.toString());
+                    
+                    setTimeout(() => {
+                        window.location.href = 'results.html';
+                    }, 500);
+                    
+                } else {
+                    throw new Error(result.error || 'Analysis failed');
+                }
+                
+            } catch (err) {
+                console.error('Analysis error:', err);
+                text.textContent = 'Error: ' + err.message;
+                bar.style.width = '0%';
+                btn.disabled = false;
+                btn.textContent = 'Try Again';
+            }
+        }
+
+        // ============ INIT ============
+        initCamera();
+    </script>
+</body>
+</html>

@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Batch - Barpath</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script>tailwind.config = { darkMode: 'class' }</script>
+</head>
+<body class="bg-gray-50 dark:bg-gray-950 min-h-screen text-gray-900 dark:text-white">
+    <div class="max-w-2xl mx-auto px-6 py-8">
+        <div class="flex items-center gap-4 mb-8">
+            <button onclick="window.location.href='index.html'" class="p-2 rounded-xl hover:bg-gray-200 dark:hover:bg-gray-800">
+                <i data-lucide="arrow-left" class="w-6 h-6"></i>
+            </button>
+            <h1 class="text-2xl font-bold">Batch Analysis</h1>
+        </div>
+
+        <!-- Info Box -->
+        <div class="bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800 rounded-xl p-4 mb-6">
+            <div class="flex gap-3">
+                <i data-lucide="info" class="w-5 h-5 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5"></i>
+                <div class="text-sm text-blue-800 dark:text-blue-200">
+                    <strong>Batch Mode:</strong> Upload multiple videos and process them one by one. 
+                    Each video takes ~60 seconds to analyze. Results are saved to History.
+                </div>
+            </div>
+        </div>
+
+        <div class="grid gap-4 mb-8">
+            <button onclick="document.getElementById('batchInput').click()" class="flex items-center justify-center gap-2 p-4 bg-purple-600 hover:bg-purple-700 text-white rounded-xl font-bold shadow-lg shadow-purple-500/30 transition-all">
+                <i data-lucide="plus" class="w-5 h-5"></i> Select Videos
+            </button>
+            <input type="file" id="batchInput" multiple accept="video/*" class="hidden">
+            
+            <button id="processBtn" onclick="processQueue()" disabled class="p-4 bg-gray-200 dark:bg-gray-800 text-gray-400 font-bold rounded-xl disabled:cursor-not-allowed transition-all">
+                Process Queue (0 videos)
+            </button>
+        </div>
+
+        <!-- Status Message -->
+        <div id="statusMessage" class="hidden mb-4 p-4 rounded-xl text-sm"></div>
+
+        <div id="queueList" class="space-y-3"></div>
+    </div>
+
+    <script>
+        lucide.createIcons();
+        if (localStorage.getItem('darkMode') === 'true') document.documentElement.classList.add('dark');
+        
+        // API URL
+        const API_URL = 'https://gamercheetah24--barpath-analyzer-v2-web-dev.modal.run/api';
+        
+        let queue = [];
+        let isProcessing = false;
+        
+        document.getElementById('batchInput').addEventListener('change', (e) => {
+            const files = Array.from(e.target.files);
+            files.forEach(file => {
+                if (file.size > 25 * 1024 * 1024) {
+                    showStatus(`⚠️ ${file.name} is too large (max 25MB). Skipped.`, 'warning');
+                    return;
+                }
+                queue.push({ 
+                    id: Math.random().toString(36).substr(2,9), 
+                    file, 
+                    status: 'pending',
+                    error: null
+                });
+            });
+            renderQueue();
+            updateProcessBtn();
+        });
+
+        function showStatus(message, type = 'info') {
+            const el = document.getElementById('statusMessage');
+            el.textContent = message;
+            el.classList.remove('hidden', 'bg-blue-50', 'bg-red-50', 'bg-green-50', 'bg-yellow-50',
+                               'text-blue-800', 'text-red-800', 'text-green-800', 'text-yellow-800',
+                               'dark:bg-blue-900/20', 'dark:bg-red-900/20', 'dark:bg-green-900/20', 'dark:bg-yellow-900/20',
+                               'dark:text-blue-200', 'dark:text-red-200', 'dark:text-green-200', 'dark:text-yellow-200');
+            
+            if (type === 'error') {
+                el.classList.add('bg-red-50', 'text-red-800', 'dark:bg-red-900/20', 'dark:text-red-200');
+            } else if (type === 'success') {
+                el.classList.add('bg-green-50', 'text-green-800', 'dark:bg-green-900/20', 'dark:text-green-200');
+            } else if (type === 'warning') {
+                el.classList.add('bg-yellow-50', 'text-yellow-800', 'dark:bg-yellow-900/20', 'dark:text-yellow-200');
+            } else {
+                el.classList.add('bg-blue-50', 'text-blue-800', 'dark:bg-blue-900/20', 'dark:text-blue-200');
+            }
+        }
+
+        function renderQueue() {
+            const list = document.getElementById('queueList');
+            if (queue.length === 0) {
+                list.innerHTML = `
+                    <div class="text-center py-8 text-gray-400">
+                        <i data-lucide="video" class="w-12 h-12 mx-auto mb-3 opacity-50"></i>
+                        <p>No videos in queue</p>
+                    </div>
+                `;
+                lucide.createIcons();
+                return;
+            }
+            
+            list.innerHTML = queue.map((item, index) => `
+                <div class="bg-white dark:bg-gray-900 p-4 rounded-xl border border-gray-200 dark:border-gray-800">
+                    <div class="flex justify-between items-center">
+                        <div class="flex items-center gap-3 flex-1 min-w-0">
+                            <div class="w-3 h-3 rounded-full flex-shrink-0 ${getStatusColor(item.status)}"></div>
+                            <span class="font-medium text-sm truncate">${item.file.name}</span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <span class="text-xs uppercase font-bold ${getStatusTextColor(item.status)}">${item.status}</span>
+                            ${item.status === 'pending' && !isProcessing ? `
+                                <button onclick="removeFromQueue(${index})" class="p-1 hover:bg-gray-100 dark:hover:bg-gray-800 rounded">
+                                    <i data-lucide="x" class="w-4 h-4 text-gray-400"></i>
+                                </button>
+                            ` : ''}
+                        </div>
+                    </div>
+                    ${item.error ? `
+                        <div class="mt-2 text-xs text-red-600 dark:text-red-400">${item.error}</div>
+                    ` : ''}
+                </div>
+            `).join('');
+            lucide.createIcons();
+            updateProcessBtn();
+        }
+
+        function getStatusColor(status) {
+            if (status === 'pending') return 'bg-gray-300';
+            if (status === 'processing') return 'bg-blue-500 animate-pulse';
+            if (status === 'complete') return 'bg-green-500';
+            return 'bg-red-500';
+        }
+
+        function getStatusTextColor(status) {
+            if (status === 'pending') return 'text-gray-400';
+            if (status === 'processing') return 'text-blue-500';
+            if (status === 'complete') return 'text-green-500';
+            return 'text-red-500';
+        }
+
+        function removeFromQueue(index) {
+            queue.splice(index, 1);
+            renderQueue();
+        }
+
+        function updateProcessBtn() {
+            const btn = document.getElementById('processBtn');
+            const pendingCount = queue.filter(i => i.status === 'pending').length;
+            btn.disabled = pendingCount === 0 || isProcessing;
+            btn.textContent = isProcessing ? 'Processing...' : `Process Queue (${pendingCount} videos)`;
+            
+            if (pendingCount > 0 && !isProcessing) {
+                btn.classList.remove('bg-gray-200', 'dark:bg-gray-800', 'text-gray-400');
+                btn.classList.add('bg-green-600', 'text-white', 'hover:bg-green-700', 'shadow-lg');
+            } else {
+                btn.classList.remove('bg-green-600', 'text-white', 'hover:bg-green-700', 'shadow-lg');
+                btn.classList.add('bg-gray-200', 'dark:bg-gray-800', 'text-gray-400');
+            }
+        }
+
+        async function processQueue() {
+            if (isProcessing) return;
+            isProcessing = true;
+            updateProcessBtn();
+            
+            let completed = 0;
+            let failed = 0;
+            
+            for (let i = 0; i < queue.length; i++) {
+                if (queue[i].status !== 'pending') continue;
+                
+                queue[i].status = 'processing';
+                queue[i].error = null;
+                renderQueue();
+                showStatus(`Processing ${queue[i].file.name}... (${i + 1}/${queue.length})`, 'info');
+                
+                try {
+                    const base64 = await readFile(queue[i].file);
+                    
+                    const controller = new AbortController();
+                    const timeout = setTimeout(() => controller.abort(), 300000);
+                    
+                    const res = await fetch(API_URL, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ 
+                            video: base64, 
+                            lift_type: 'clean', 
+                            filename: queue[i].file.name 
+                        }),
+                        signal: controller.signal
+                    });
+                    
+                    clearTimeout(timeout);
+                    
+                    if (!res.ok) {
+                        throw new Error(`Server returned ${res.status}: ${res.statusText}`);
+                    }
+                    
+                    const data = await res.json();
+                    
+                    if (data.success) {
+                        queue[i].status = 'complete';
+                        completed++;
+                        
+                        // Save to history - ONLY save lightweight data (no video!)
+                        try {
+                            const history = JSON.parse(localStorage.getItem('liftHistory') || '[]');
+                            
+                            // Create lightweight result (NO video, NO large graphs)
+                            const lightweightResult = {
+                                success: true,
+                                metrics: data.metrics || {},
+                                critique: data.critique || [],
+                                // Only keep small graph references, not full base64
+                                graphs: {} // Skip graphs for batch to save space
+                            };
+                            
+                            history.unshift({
+                                id: Date.now() + i, // Unique ID
+                                date: new Date().toISOString(),
+                                lift: 'clean',
+                                filename: queue[i].file.name,
+                                score: Math.round(data.metrics?.technique_score || 0),
+                                velocity: Math.round(data.metrics?.peak_velocity || 0),
+                                duration: (data.metrics?.duration || 0).toFixed(1),
+                                resultData: lightweightResult // Lightweight version
+                            });
+                            
+                            // Keep only last 20 entries
+                            while (history.length > 20) {
+                                history.pop();
+                            }
+                            
+                            localStorage.setItem('liftHistory', JSON.stringify(history));
+                        } catch (storageError) {
+                            console.warn('Could not save to history:', storageError);
+                            // Don't fail the whole thing, just warn
+                        }
+                    } else {
+                        queue[i].status = 'error';
+                        queue[i].error = data.error || 'Analysis failed';
+                        failed++;
+                    }
+
+                } catch (e) {
+                    queue[i].status = 'error';
+                    if (e.name === 'AbortError') {
+                        queue[i].error = 'Request timed out (>5 min)';
+                    } else {
+                        queue[i].error = e.message || 'Network error';
+                    }
+                    failed++;
+                    console.error('Batch error:', e);
+                }
+                
+                renderQueue();
+            }
+            
+            isProcessing = false;
+            updateProcessBtn();
+            
+            if (completed > 0 && failed === 0) {
+                showStatus(`✅ All ${completed} videos processed successfully! Check History.`, 'success');
+            } else if (completed > 0) {
+                showStatus(`⚠️ ${completed} succeeded, ${failed} failed. Check errors below.`, 'warning');
+            } else {
+                showStatus(`❌ All ${failed} videos failed to process.`, 'error');
+            }
+        }
+
+        function readFile(file) {
+            return new Promise((resolve, reject) => {
+                const r = new FileReader();
+                r.onload = () => resolve(r.result.split(',')[1]);
+                r.onerror = () => reject(new Error('Failed to read file'));
+                r.readAsDataURL(file);
+            });
+        }
+    </script>
+</body>
+</html>

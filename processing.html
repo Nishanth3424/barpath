@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Analyzing - Barpath</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        body {
+            background: linear-gradient(to bottom, #ffffff, #f9fafb);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .container {
+            max-width: 512px;
+            margin: 0 auto;
+            padding: 2rem 1.5rem;
+            text-align: center;
+        }
+
+        .logo {
+            height: 80px;
+            width: auto;
+            margin: 0 auto 3rem;
+            display: block;
+        }
+
+        /* Animated Loading Spinner */
+        .spinner-container {
+            margin: 0 auto 2rem;
+            position: relative;
+            width: 120px;
+            height: 120px;
+        }
+
+        .spinner {
+            width: 120px;
+            height: 120px;
+            border: 8px solid #e5e7eb;
+            border-top: 8px solid #2f80ed;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .status-title {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #0d1117;
+            margin-bottom: 1rem;
+        }
+
+        .status-text {
+            font-size: 1rem;
+            color: #6b7280;
+            margin-bottom: 3rem;
+        }
+
+        /* Progress Steps */
+        .progress-steps {
+            background: white;
+            border: 1px solid #e5e7eb;
+            border-radius: 16px;
+            padding: 2rem;
+            text-align: left;
+            margin-bottom: 2rem;
+        }
+
+        .step {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            padding: 1rem 0;
+            border-bottom: 1px solid #f3f4f6;
+        }
+
+        .step:last-child {
+            border-bottom: none;
+        }
+
+        .step-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            font-weight: 700;
+        }
+
+        .step-icon.complete {
+            background: #22c55e;
+            color: white;
+        }
+
+        .step-icon.active {
+            background: #2f80ed;
+            color: white;
+            animation: pulse 2s ease-in-out infinite;
+        }
+
+        .step-icon.pending {
+            background: #f3f4f6;
+            color: #9ca3af;
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+        }
+
+        .step-content {
+            flex: 1;
+        }
+
+        .step-title {
+            font-weight: 600;
+            color: #0d1117;
+            margin-bottom: 0.25rem;
+        }
+
+        .step-description {
+            font-size: 0.875rem;
+            color: #6b7280;
+        }
+
+        /* Info Box */
+        .info-box {
+            background: #eff6ff;
+            border: 1px solid #dbeafe;
+            border-radius: 12px;
+            padding: 1rem;
+            display: flex;
+            gap: 0.75rem;
+            align-items: flex-start;
+        }
+
+        .info-box svg {
+            width: 20px;
+            height: 20px;
+            color: #2563eb;
+            flex-shrink: 0;
+            margin-top: 0.125rem;
+        }
+
+        .info-box p {
+            font-size: 0.875rem;
+            color: #1e40af;
+            line-height: 1.5;
+        }
+
+        /* Cancel Button */
+        .cancel-button {
+            margin-top: 2rem;
+            background: transparent;
+            color: #6b7280;
+            border: 1px solid #e5e7eb;
+            padding: 0.75rem 2rem;
+            border-radius: 12px;
+            font-size: 0.875rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .cancel-button:hover {
+            background: #f9fafb;
+            color: #0d1117;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <img src="barpath_logo__1_.svg" alt="Barpath Logo" class="logo">
+        
+        <div class="spinner-container">
+            <div class="spinner"></div>
+        </div>
+
+        <h1 class="status-title">Analyzing Your Lift</h1>
+        <p class="status-text">This may take 30-60 seconds. Please don't close this window.</p>
+
+        <div class="progress-steps">
+            <div class="step">
+                <div class="step-icon complete">✓</div>
+                <div class="step-content">
+                    <div class="step-title">Video Uploaded</div>
+                    <div class="step-description">Your video has been received</div>
+                </div>
+            </div>
+
+            <div class="step">
+                <div class="step-icon active" id="step2">2</div>
+                <div class="step-content">
+                    <div class="step-title">Detecting Barbell & Body</div>
+                    <div class="step-description">Tracking movement throughout the lift</div>
+                </div>
+            </div>
+
+            <div class="step">
+                <div class="step-icon pending" id="step3">3</div>
+                <div class="step-content">
+                    <div class="step-title">Calculating Metrics</div>
+                    <div class="step-description">Analyzing bar path, velocity, and angles</div>
+                </div>
+            </div>
+
+            <div class="step">
+                <div class="step-icon pending" id="step4">4</div>
+                <div class="step-content">
+                    <div class="step-title">Generating Report</div>
+                    <div class="step-description">Creating visualizations and feedback</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="info-box">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"/>
+                <path d="M12 16v-4M12 8h.01"/>
+            </svg>
+            <p>
+                <strong>What we're analyzing:</strong> Bar path trajectory, velocity curves, 
+                joint angles, timing, and technical execution. You'll get detailed feedback 
+                on your <span id="liftType">lift</span>.
+            </p>
+        </div>
+
+        <button class="cancel-button" onclick="window.location.href='upload.html'">
+            Cancel Analysis
+        </button>
+    </div>
+
+    <script>
+        // Get lift type from previous page
+        const liftType = localStorage.getItem('selectedLift') || 'lift';
+        document.getElementById('liftType').textContent = liftType;
+
+        // Get the video file from upload page
+        const videoFileName = localStorage.getItem('videoFileName') || 'video.mp4';
+
+        // IMPORTANT: We need to get the actual file object
+        // Since we can't easily pass file objects between pages,
+        // we'll trigger the upload from upload.html instead
+        // For now, this simulates the process
+
+        let currentStep = 2;
+
+        function updateStep(stepNumber) {
+            const icon = document.getElementById(`step${stepNumber}`);
+            if (icon) {
+                icon.classList.remove('active', 'pending');
+                icon.classList.add('complete');
+                icon.textContent = '✓';
+            }
+
+            if (stepNumber < 4) {
+                const nextIcon = document.getElementById(`step${stepNumber + 1}`);
+                if (nextIcon) {
+                    nextIcon.classList.remove('pending');
+                    nextIcon.classList.add('active');
+                }
+            }
+        }
+
+        // Check if we have actual analysis results
+        const analysisResults = localStorage.getItem('analysisResults');
+        
+        if (analysisResults) {
+            // We have real results! Show real progress
+            console.log('Real analysis mode');
+            
+            // Simulate progress for user feedback
+            setTimeout(() => updateStep(2), 1000);
+            setTimeout(() => updateStep(3), 2000);
+            setTimeout(() => updateStep(4), 3000);
+            setTimeout(() => {
+                window.location.href = 'results.html';
+            }, 3500);
+        } else {
+            // Simulation mode (for testing without Python)
+            console.log('Simulation mode - no Python backend detected');
+            
+            setTimeout(() => updateStep(2), 3000);
+            setTimeout(() => updateStep(3), 6000);
+            setTimeout(() => updateStep(4), 9000);
+            setTimeout(() => {
+                // Create fake results for testing
+                const fakeResults = {
+                    success: true,
+                    lift_type: liftType,
+                    metrics: {
+                        duration: 2.1,
+                        peak_velocity: 1.8,
+                        avg_velocity: 0.9,
+                        peak_acceleration: 5.2,
+                        bar_path_length: 45,
+                        technique_score: 87
+                    },
+                    critique: [
+                        '✓ Good Extension: Full hip and knee extension achieved at the peak of the pull.',
+                        '⚠ Early Arm Bend: Arms are bending slightly before full extension.',
+                        '✓ Bar Close to Body: Bar path stays close to your center of mass.'
+                    ],
+                    graphs: {} // Empty in simulation mode
+                };
+                
+                localStorage.setItem('analysisResults', JSON.stringify(fakeResults));
+                window.location.href = 'results.html';
+            }, 10000);
+        }
+    </script>
+</body>
+</html>

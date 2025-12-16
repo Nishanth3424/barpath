@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Barpath Analyzer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script>tailwind.config = { darkMode: 'class' }</script>
+</head>
+<body class="min-h-screen bg-white dark:bg-gray-950 text-gray-900 dark:text-white pb-20">
+
+    <div class="max-w-2xl mx-auto px-6 py-8">
+        <div id="upload-view">
+            <div class="flex items-center gap-4 mb-8">
+                <button onclick="window.location.href='index.html'" class="p-2 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-800">
+                    <i data-lucide="arrow-left" class="w-6 h-6"></i>
+                </button>
+                <div>
+                    <h1 class="text-2xl font-bold">Upload Video</h1>
+                    <p class="text-sm text-gray-500 dark:text-gray-400">Import a lift recording</p>
+                </div>
+            </div>
+
+            <div id="uploadZone" class="border-2 border-dashed border-gray-200 dark:border-gray-800 rounded-3xl p-12 text-center cursor-pointer hover:border-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/10 transition-all" onclick="document.getElementById('fileIn').click()">
+                <input type="file" id="fileIn" class="hidden" accept="video/*" onchange="handleFileSelect(this)">
+                <div id="emptyState">
+                    <div class="w-16 h-16 mx-auto mb-4 rounded-2xl bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
+                        <i data-lucide="video" class="w-8 h-8 text-blue-600 dark:text-blue-400"></i>
+                    </div>
+                    <p class="font-semibold mb-1">Tap to select video</p>
+                    <p class="text-sm text-gray-500">Max 20MB. MP4 or MOV.</p>
+                </div>
+                <div id="fileState" class="hidden">
+                    <p class="text-lg font-bold mb-2" id="fileName">video.mp4</p>
+                    <p class="text-sm text-green-600 dark:text-green-400">Ready to analyze</p>
+                </div>
+            </div>
+
+            <div class="mt-8 space-y-4">
+                <div>
+                    <label class="block text-sm font-medium mb-2 text-gray-700 dark:text-gray-300">Lift Type</label>
+                    <div class="grid grid-cols-4 gap-2">
+                        <button onclick="setLift('clean')" class="lift-btn p-3 rounded-xl border border-gray-200 dark:border-gray-700 hover:border-blue-500 bg-blue-50 dark:bg-blue-900/20 text-blue-600 border-blue-500 text-sm font-medium transition-all active-lift" id="btn-clean">Clean</button>
+                        <button onclick="setLift('snatch')" class="lift-btn p-3 rounded-xl border border-gray-200 dark:border-gray-700 hover:border-blue-500 bg-white dark:bg-gray-900 text-sm font-medium transition-all" id="btn-snatch">Snatch</button>
+                        <button onclick="setLift('jerk')" class="lift-btn p-3 rounded-xl border border-gray-200 dark:border-gray-700 hover:border-blue-500 bg-white dark:bg-gray-900 text-sm font-medium transition-all" id="btn-jerk">Jerk</button>
+                        <button onclick="setLift('squat')" class="lift-btn p-3 rounded-xl border border-gray-200 dark:border-gray-700 hover:border-blue-500 bg-white dark:bg-gray-900 text-sm font-medium transition-all" id="btn-squat">Squat</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="mt-8">
+                <div id="progressArea" class="hidden mb-4">
+                    <div class="flex justify-between text-sm mb-1">
+                        <span id="progressText">Uploading...</span>
+                        <span id="progressPercent">0%</span>
+                    </div>
+                    <div class="w-full bg-gray-200 dark:bg-gray-800 rounded-full h-2.5">
+                        <div id="progressBar" class="bg-blue-600 h-2.5 rounded-full" style="width: 0%"></div>
+                    </div>
+                </div>
+                
+                <button id="analyzeBtn" onclick="uploadAndAnalyze()" disabled class="w-full py-4 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl font-bold text-lg transition-all shadow-lg shadow-blue-500/30">
+                    Start Analysis
+                </button>
+            </div>
+        </div>
+
+        <div id="results-view" class="hidden">
+            <div class="flex items-center justify-between mb-8">
+                <button onclick="window.location.reload()" class="p-2 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-800">
+                    <i data-lucide="arrow-left" class="w-6 h-6"></i> <span class="ml-2 text-sm font-bold">Analyze Another</span>
+                </button>
+            </div>
+            <div id="results-content"></div>
+        </div>
+    </div>
+
+    <script>
+        lucide.createIcons();
+        if (localStorage.getItem('darkMode') === 'true') document.documentElement.classList.add('dark');
+
+        // --- CONFIG ---
+        const API_URL = 'https://gamercheetah24--barpath-analyzer-v2-web-dev.modal.run/api';
+        const MAX_CACHED_VIDEOS = 3; 
+
+        // --- INDEXED DB MANAGER (Handles the heavy videos) ---
+        const dbName = "BarpathDB";
+        const storeName = "videos";
+        const DB_VERSION = 2; // Increment this if you change the schema
+
+        function openDB() {
+            return new Promise((resolve, reject) => {
+                const request = indexedDB.open(dbName, DB_VERSION);
+                
+                request.onupgradeneeded = (e) => {
+                    const db = e.target.result;
+                    // Only create the store if it doesn't exist
+                    if (!db.objectStoreNames.contains(storeName)) {
+                        db.createObjectStore(storeName);
+                        console.log("✅ Created IndexedDB store:", storeName);
+                    }
+                };
+                
+                request.onsuccess = (e) => {
+                    console.log("✅ IndexedDB opened successfully");
+                    resolve(e.target.result);
+                };
+                
+                request.onerror = (e) => {
+                    console.error("❌ IndexedDB error:", e.target.error);
+                    reject(e.target.error);
+                };
+            });
+        }
+
+        async function saveVideoToDB(id, base64Video) {
+            try {
+                const db = await openDB();
+                
+                // Check if the store exists
+                if (!db.objectStoreNames.contains(storeName)) {
+                    console.error("❌ Video store not found - cannot save video");
+                    return;
+                }
+                
+                const tx = db.transaction(storeName, "readwrite");
+                const store = tx.objectStore(storeName);
+
+                // 1. Save new video
+                store.put(base64Video, id);
+                console.log("✅ Video saved to IndexedDB with ID:", id);
+
+                // 2. Enforce Limit (Delete oldest)
+                const keysRequest = store.getAllKeys();
+                keysRequest.onsuccess = () => {
+                    const keys = keysRequest.result;
+                    if (keys.length > MAX_CACHED_VIDEOS) {
+                        const oldestKey = keys.sort((a, b) => a - b)[0]; 
+                        store.delete(oldestKey);
+                        console.log("🗑️ Deleted old video to save space:", oldestKey);
+                    }
+                };
+                
+                // Wait for transaction to complete
+                await new Promise((resolve, reject) => {
+                    tx.oncomplete = resolve;
+                    tx.onerror = () => reject(tx.error);
+                });
+                
+            } catch (e) {
+                console.error("❌ Failed to save video to IndexedDB:", e);
+            }
+        }
+
+        // --- MAIN LOGIC ---
+        let currentLift = 'clean';
+        let selectedFile = null;
+
+        function setLift(type) {
+            currentLift = type;
+            document.querySelectorAll('.lift-btn').forEach(b => {
+                b.classList.remove('bg-blue-50', 'dark:bg-blue-900/20', 'border-blue-500', 'text-blue-600');
+                b.classList.add('bg-white', 'dark:bg-gray-900', 'border-gray-200');
+            });
+            const active = document.getElementById('btn-' + type);
+            active.classList.remove('bg-white', 'dark:bg-gray-900', 'border-gray-200');
+            active.classList.add('bg-blue-50', 'dark:bg-blue-900/20', 'border-blue-500', 'text-blue-600');
+        }
+
+        function handleFileSelect(input) {
+            if (input.files && input.files[0]) {
+                selectedFile = input.files[0];
+                document.getElementById('fileName').textContent = selectedFile.name;
+                document.getElementById('emptyState').classList.add('hidden');
+                document.getElementById('fileState').classList.remove('hidden');
+                document.getElementById('analyzeBtn').disabled = false;
+            }
+        }
+
+        async function uploadAndAnalyze() {
+            if (!selectedFile) return;
+            if (selectedFile.size > 25 * 1024 * 1024) {
+                alert("File too large. Please use a video under 25MB.");
+                return;
+            }
+
+            const btn = document.getElementById('analyzeBtn');
+            const progress = document.getElementById('progressArea');
+            const bar = document.getElementById('progressBar');
+            const text = document.getElementById('progressText');
+
+            btn.disabled = true;
+            progress.classList.remove('hidden');
+            bar.style.width = '10%';
+
+            try {
+                text.textContent = "Preparing video...";
+                const reader = new FileReader();
+                reader.readAsDataURL(selectedFile);
+                
+                reader.onload = async () => {
+                    const base64 = reader.result.split(',')[1];
+                    
+                    text.textContent = "Analyzing (this takes ~60s)...";
+                    bar.style.width = '40%';
+                    
+                    try {
+                        const response = await fetch(API_URL, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                video: base64,
+                                lift_type: currentLift,
+                                filename: selectedFile.name
+                            })
+                        });
+
+                        bar.style.width = '80%';
+
+                        if (!response.ok) throw new Error(`Server Error: ${response.statusText}`);
+
+                        const result = await response.json();
+                        console.log("API Result:", result);
+
+                        if (result.success) {
+                            bar.style.width = '100%';
+                            text.textContent = "Complete!";
+                            
+                            const liftId = Date.now(); // Unique ID for this lift
+
+                            // 1. Save Heavy Video to IndexedDB
+                            if (result.rendered_video) {
+                                await saveVideoToDB(liftId, result.rendered_video);
+                            }
+
+                            // 2. Save Lightweight Data to LocalStorage
+                            saveHistoryMetadata(result, currentLift, selectedFile.name, liftId);
+                            
+                            // 3. Render Results
+                            renderResults(result);
+
+                        } else {
+                            throw new Error(result.error || "Unknown error");
+                        }
+                    } catch (err) {
+                        console.error(err);
+                        alert("Analysis failed: " + err.message);
+                        btn.disabled = false;
+                        progress.classList.add('hidden');
+                    }
+                };
+            } catch (e) {
+                alert("File reading failed");
+                btn.disabled = false;
+            }
+        }
+
+        function saveHistoryMetadata(result, liftType, filename, liftId) {
+            try {
+                const safeResult = JSON.parse(JSON.stringify(result));
+                delete safeResult.rendered_video; // DELETE VIDEO FROM METADATA (Saved in DB instead)
+                
+                // Try to keep graphs, but if it fails, strip them
+                try {
+                    storeMeta(safeResult, liftType, filename, liftId);
+                } catch (e) {
+                    delete safeResult.graphs;
+                    storeMeta(safeResult, liftType, filename, liftId);
+                }
+            } catch (e) {
+                console.warn("History storage full", e);
+            }
+        }
+
+        function storeMeta(data, liftType, filename, liftId) {
+            const history = JSON.parse(localStorage.getItem('liftHistory') || '[]');
+            const metrics = data.metrics || {};
+            
+            history.unshift({
+                id: liftId, // This links to the DB video
+                date: new Date().toISOString(),
+                lift: liftType,
+                filename: filename,
+                score: Math.round(metrics.technique_score || 0),
+                velocity: (metrics.peak_velocity || 0).toFixed(0),
+                duration: (metrics.duration || 0).toFixed(1),
+                resultData: data
+            });
+            
+            if (history.length > 20) history.pop(); // Keep last 20 meta records
+            localStorage.setItem('liftHistory', JSON.stringify(history));
+        }
+
+        function renderResults(data) {
+            document.getElementById('upload-view').classList.add('hidden');
+            document.getElementById('results-view').classList.remove('hidden');
+            
+            const container = document.getElementById('results-content');
+            const m = data.metrics || {};
+            const graphs = data.graphs || {};
+            const critique = data.critique || [];
+            const videoSrc = data.rendered_video ? `data:video/mp4;base64,${data.rendered_video}` : null;
+
+            container.innerHTML = `
+                ${videoSrc ? `
+                <div class="mb-8 rounded-2xl overflow-hidden shadow-lg border border-gray-200 dark:border-gray-800 bg-black aspect-video relative">
+                    <video controls autoplay loop muted playsinline class="w-full h-full object-contain">
+                        <source src="${videoSrc}" type="video/mp4">
+                    </video>
+                    <div class="absolute top-4 left-4 bg-black/50 backdrop-blur px-3 py-1 rounded-lg text-white text-xs font-bold">
+                        AI TRACKING OVERLAY
+                    </div>
+                </div>
+                ` : '<div class="p-4 bg-red-100 text-red-800 rounded-lg">Video generation failed</div>'}
+
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+                    <div class="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-2xl border border-blue-100 dark:border-blue-800">
+                        <div class="text-xs text-blue-600 dark:text-blue-400 font-medium mb-1 uppercase">Score</div>
+                        <div class="text-2xl font-bold text-blue-700 dark:text-blue-300">${Math.round(m.technique_score || 0)}</div>
+                    </div>
+                    <div class="p-4 bg-gray-50 dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800">
+                        <div class="text-xs text-gray-500 font-medium mb-1 uppercase">Peak Vel</div>
+                        <div class="text-2xl font-bold">${Math.round(m.peak_velocity || 0)} <span class="text-xs text-gray-400">px/s</span></div>
+                    </div>
+                    <div class="p-4 bg-gray-50 dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800">
+                        <div class="text-xs text-gray-500 font-medium mb-1 uppercase">Duration</div>
+                        <div class="text-2xl font-bold">${(m.duration || 0).toFixed(1)} <span class="text-xs text-gray-400">s</span></div>
+                    </div>
+                    <div class="p-4 bg-gray-50 dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-800">
+                        <div class="text-xs text-gray-500 font-medium mb-1 uppercase">Path Len</div>
+                        <div class="text-2xl font-bold">${Math.round(m.bar_path_length || 0)}</div>
+                    </div>
+                </div>
+
+                ${critique.length > 0 ? `
+                <div class="mb-8 p-6 bg-orange-50 dark:bg-orange-900/10 rounded-2xl border border-orange-100 dark:border-orange-900/30">
+                    <h3 class="font-bold text-orange-800 dark:text-orange-200 mb-4 flex items-center gap-2">
+                        <i data-lucide="alert-circle" class="w-5 h-5"></i> AI Feedback
+                    </h3>
+                    <ul class="space-y-3">
+                        ${critique.map(c => `
+                            <li class="flex items-start gap-3 text-sm text-orange-900 dark:text-orange-100">
+                                <span class="mt-1.5 w-1.5 h-1.5 rounded-full bg-orange-500 flex-shrink-0"></span>
+                                ${c}
+                            </li>
+                        `).join('')}
+                    </ul>
+                </div>
+                ` : ''}
+
+                <div class="space-y-8">
+                    ${renderGraph(graphs.barbell_xy_stable_path, "Bar Path Trajectory", "This view shows the bar's path from the side. A vertical line is ideal.")}
+                    ${renderGraph(graphs.vel_y_smooth, "Vertical Velocity", "Shows the speed of the bar going up. Look for a smooth double peak.")}
+                    ${renderGraph(graphs.accel_y_smooth, "Vertical Acceleration", "Shows force production. Sharp spikes indicate explosive power.")}
+                </div>
+            `;
+            lucide.createIcons();
+        }
+
+        function renderGraph(base64, title, desc) {
+            if (!base64) return '';
+            return `
+                <div class="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl overflow-hidden">
+                    <div class="p-4 border-b border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50">
+                        <h3 class="font-semibold text-gray-900 dark:text-white">${title}</h3>
+                    </div>
+                    <div class="p-4 bg-white">
+                        <img src="data:image/png;base64,${base64}" class="w-full h-auto rounded-lg">
+                    </div>
+                    <div class="p-4 bg-blue-50 dark:bg-blue-900/10 text-sm text-blue-800 dark:text-blue-200">
+                        <span class="font-bold">ðŸ’¡ Analysis:</span> ${desc}
+                    </div>
+                </div>
+            `;
+        }
+
+        // Initialize
+        setLift('clean');
+    </script>
+</body>
+</html>
