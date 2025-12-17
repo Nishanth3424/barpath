@@ -2,10 +2,10 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Batch - Barpath Pro</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
+    <script>tailwind.config = { darkMode: 'class' }</script>
     <style>
         :root { --glass-border: rgba(255, 255, 255, 0.1); --glass-bg: rgba(20, 20, 25, 0.7); }
         body { font-family: -apple-system, sans-serif; background: #000; color: white; overflow-x: hidden; }
@@ -25,9 +25,9 @@
         </div>
 
         <div class="glass-panel p-4 rounded-2xl mb-6 flex gap-3 items-start border-blue-500/30 bg-blue-900/10">
-            <i data-lucide="layers" class="w-5 h-5 text-blue-400 mt-0.5"></i>
+            <i data-lucide="database" class="w-5 h-5 text-blue-400 mt-0.5"></i>
             <div class="text-sm text-blue-200">
-                <strong>Pro Feature:</strong> Process multiple videos sequentially. Results are saved to History automatically.
+                <strong>Unlimited Storage Active:</strong> All videos and graphs will be saved to your device history until disk is full.
             </div>
         </div>
 
@@ -47,24 +47,32 @@
         <div id="queueList" class="space-y-3"></div>
     </div>
 
+    <div id="successModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/80 hidden opacity-0 transition-opacity duration-300">
+        <div class="glass-panel p-8 rounded-3xl text-center max-w-xs mx-4 transform scale-95 transition-transform duration-300" id="modalContent">
+            <div class="w-16 h-16 bg-green-500 rounded-full flex items-center justify-center mx-auto mb-4 shadow-[0_0_20px_rgba(34,197,94,0.5)]">
+                <i data-lucide="check" class="w-8 h-8 text-black font-bold"></i>
+            </div>
+            <h2 class="text-xl font-bold mb-2">Batch Complete!</h2>
+            <p class="text-gray-400 text-sm mb-6">All videos have been analyzed and saved.</p>
+            <button onclick="window.location.href='history.html'" class="w-full py-3 bg-white text-black font-bold rounded-xl hover:bg-gray-200 transition-colors">
+                Check History
+            </button>
+        </div>
+    </div>
+
     <script>
         lucide.createIcons();
         const API_URL = 'https://gamercheetah24--barpath-analyzer-v2-web.modal.run/api';
         let queue = [];
         let isProcessing = false;
         
-        // --- DB HELPERS (Version 3) ---
-        function openDB(){return new Promise(r=>{const q=indexedDB.open("BarpathDB",3);q.onsuccess=e=>r(e.target.result);q.onerror=()=>r(null)})}
+        // Use DB Version 3 to match other files
+        function openDB(){return new Promise((r,j)=>{const q=indexedDB.open("BarpathDB",3);q.onsuccess=e=>r(e.target.result);q.onerror=e=>j(e)})}
 
         document.getElementById('batchInput').addEventListener('change', (e) => {
             const files = Array.from(e.target.files);
             files.forEach(file => {
-                queue.push({ 
-                    id: Math.random().toString(36).substr(2,9), 
-                    file, 
-                    status: 'pending', 
-                    error: null 
-                });
+                queue.push({ id: Math.random().toString(36).substr(2,9), file, status: 'pending', error: null });
             });
             renderQueue();
             updateProcessBtn();
@@ -72,10 +80,7 @@
 
         function renderQueue() {
             const list = document.getElementById('queueList');
-            if (queue.length === 0) {
-                list.innerHTML = `<div class="text-center text-gray-600 text-sm">Queue is empty</div>`;
-                return;
-            }
+            if (queue.length === 0) { list.innerHTML = `<div class="text-center text-gray-600 text-sm">Queue is empty</div>`; return; }
             
             list.innerHTML = queue.map((item, index) => `
                 <div class="glass-panel p-4 rounded-xl flex items-center justify-between">
@@ -88,28 +93,14 @@
                             <div class="text-[10px] uppercase font-bold tracking-wider ${getStatusTextColor(item.status)}">${item.status}</div>
                         </div>
                     </div>
-                    ${item.status === 'pending' && !isProcessing ? `
-                        <button onclick="removeFromQueue(${index})" class="p-2 hover:bg-white/10 rounded-full">
-                            <i data-lucide="x" class="w-4 h-4 text-gray-400"></i>
-                        </button>
-                    ` : ''}
+                    ${item.status === 'pending' && !isProcessing ? `<button onclick="removeFromQueue(${index})" class="p-2 hover:bg-white/10 rounded-full"><i data-lucide="x" class="w-4 h-4 text-gray-400"></i></button>` : ''}
                 </div>
             `).join('');
             lucide.createIcons();
         }
 
-        function getStatusColor(s) {
-            if(s==='pending') return 'bg-gray-500';
-            if(s==='processing') return 'bg-blue-500 animate-pulse';
-            if(s==='complete') return 'bg-green-500';
-            return 'bg-red-500';
-        }
-        function getStatusTextColor(s) {
-            if(s==='pending') return 'text-gray-500';
-            if(s==='processing') return 'text-blue-400';
-            if(s==='complete') return 'text-green-400';
-            return 'text-red-400';
-        }
+        function getStatusColor(s) { return s==='pending'?'bg-gray-500':s==='processing'?'bg-blue-500 animate-pulse':s==='complete'?'bg-green-500':'bg-red-500'; }
+        function getStatusTextColor(s) { return s==='pending'?'text-gray-500':s==='processing'?'text-blue-400':s==='complete'?'text-green-400':'text-red-400'; }
         function getStatusIcon(s) {
             if(s==='pending') return '<div class="w-2 h-2 bg-gray-400 rounded-full"></div>';
             if(s==='processing') return '<i data-lucide="loader-2" class="w-4 h-4 text-blue-400 animate-spin"></i>';
@@ -122,7 +113,6 @@
         function updateProcessBtn() {
             const btn = document.getElementById('processBtn');
             const pending = queue.filter(i => i.status === 'pending').length;
-            
             if (isProcessing) {
                 btn.textContent = "Processing...";
                 btn.className = "w-full py-4 bg-blue-600/50 text-white font-bold rounded-2xl cursor-wait";
@@ -153,35 +143,43 @@
 
             for (let i = 0; i < queue.length; i++) {
                 if (queue[i].status !== 'pending') continue;
-                
                 queue[i].status = 'processing';
                 renderQueue();
 
                 try {
                     const b64 = await readFile(queue[i].file);
-                    
                     const res = await fetch(API_URL, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ 
-                            video: b64, 
-                            lift_type: 'clean', 
-                            filename: queue[i].file.name 
-                        })
+                        body: JSON.stringify({ video: b64, lift_type: 'clean', filename: queue[i].file.name })
                     });
                     const data = await res.json();
 
                     if (data.success) {
-                        queue[i].status = 'complete';
+                        const liftId = Date.now() + i;
                         
-                        // Save Result (Lightweight only for Batch)
+                        // 1. SAVE TO DB (HEAVY)
+                        const db = await openDB();
+                        const tx = db.transaction(["videos", "graphs"], "readwrite");
+                        if (data.rendered_video) tx.objectStore("videos").put(data.rendered_video, liftId);
+                        if (data.graphs) tx.objectStore("graphs").put(data.graphs, liftId);
+                        await new Promise(r => { tx.oncomplete = r; tx.onerror = r; });
+
+                        // 2. SAVE TO HISTORY (LIGHT)
                         const history = JSON.parse(localStorage.getItem('liftHistory') || '[]');
-                        const lightResult = { ...data };
-                        delete lightResult.rendered_video; // Too big for batch
-                        delete lightResult.graphs;         // Too big for batch
                         
+                        // REMOVED THE DELETION LINES HERE.
+                        // We now keep the data structure consistent, but the heavy data is in IndexedDB
+                        // so we don't need to put it in localStorage.
+                        
+                        const lightResult = { ...data };
+                        delete lightResult.rendered_video; // Still delete from *LocalStorage*
+                        delete lightResult.graphs;         // Still delete from *LocalStorage*
+                        // But since we saved them to IndexedDB above with the matching liftId, 
+                        // the results.html page will find them!
+
                         history.unshift({
-                            id: Date.now() + i,
+                            id: liftId,
                             date: new Date().toISOString(),
                             lift: 'clean',
                             score: Math.round(data.metrics?.technique_score || 0),
@@ -190,6 +188,8 @@
                             resultData: lightResult
                         });
                         localStorage.setItem('liftHistory', JSON.stringify(history.slice(0, 20)));
+                        
+                        queue[i].status = 'complete';
                     } else {
                         queue[i].status = 'error';
                     }
@@ -200,6 +200,17 @@
             }
             isProcessing = false;
             updateProcessBtn();
+            
+            if (queue.every(q => q.status === 'complete')) {
+                const modal = document.getElementById('successModal');
+                const content = document.getElementById('modalContent');
+                modal.classList.remove('hidden');
+                setTimeout(() => {
+                    modal.classList.remove('opacity-0');
+                    content.classList.remove('scale-95');
+                    content.classList.add('scale-100');
+                }, 10);
+            }
         }
     </script>
 </body>
