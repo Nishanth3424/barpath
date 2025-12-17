@@ -57,11 +57,30 @@
         }
 
         const GRAPH_INFO = {
-            'barbell_xy_stable_path': { title: 'Bar Path (Stabilized)', desc: 'Pure movement with camera shake removed.' },
-            'barbell_lateral_corrected_path': { title: 'Perspective Corrected', desc: 'Corrects camera angle to show true path.' },
-            'vel_y_smooth': { title: 'Vertical Velocity', desc: 'Upward speed of the bar.' },
-            'accel_y_smooth': { title: 'Acceleration', desc: 'Force production.' },
-            'specific_power_y_smooth': { title: 'Specific Power', desc: 'Power to mass ratio.' }
+            'barbell_xy_stable_path': { 
+                title: 'Bar Path Trajectory', 
+                desc: 'Top-down view of the bar\'s movement. The ideal path is nearly vertical. Loops or horizontal curves indicate inefficiency (swinging the bar away).' 
+            },
+            'barbell_lateral_corrected_path': { 
+                title: 'Perspective Corrected Path', 
+                desc: 'This removes the camera angle distortion to show the TRUE bar path. Use this to judge if you are actually pulling straight or swinging.' 
+            },
+            'vel_y_smooth': { 
+                title: 'Vertical Velocity', 
+                desc: 'How fast the bar moves up. For Cleans/Snatches, look for two distinct peaks (1st & 2nd pull). A crash to zero between them means you stopped pulling.' 
+            },
+            'accel_y_smooth': { 
+                title: 'Vertical Acceleration', 
+                desc: 'Measures Force (F=ma). Sharp spikes here correspond to your explosive "drive" against the floor. Higher spikes = more explosive power.' 
+            },
+            'specific_power_y_smooth': { 
+                title: 'Specific Power', 
+                desc: 'Your Power-to-Weight ratio. This is the ultimate measure of explosiveness relative to the system mass. Sustained high power is key for heavy lifts.' 
+            },
+            'barbell_xy_stable_path_unsmoothed': { 
+                title: 'Raw Tracking Data', 
+                desc: 'The raw, unfiltered detection data. Useful for debugging if the "Smooth" path looks artificial or over-corrected.' 
+            }
         };
 
         (async function init() {
