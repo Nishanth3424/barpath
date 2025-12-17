@@ -78,23 +78,20 @@
             }
         }
         
-        // Calculate storage
         (async function() {
             const el = document.getElementById('storageInfo');
             try {
                 let bytes = 0;
-                // LocalStorage
                 for(let k in localStorage) if(localStorage.hasOwnProperty(k)) bytes += localStorage[k].length * 2;
                 
-                // IndexedDB (Approx)
-                const dbReq = indexedDB.open("BarpathDB", 2);
+                // CHANGED: Version 2 -> 3
+                const dbReq = indexedDB.open("BarpathDB", 3);
                 dbReq.onsuccess = (e) => {
                     const db = e.target.result;
                     if(db.objectStoreNames.contains("videos")) {
                         const tx = db.transaction(["videos"], "readonly");
                         const store = tx.objectStore("videos");
                         store.count().onsuccess = (ev) => {
-                            // Rough estimate: 5MB per video
                             const mb = (ev.target.result * 5) + (bytes / 1024 / 1024);
                             el.textContent = mb < 1 ? "< 1 MB" : mb.toFixed(1) + " MB Used";
                         }

@@ -39,8 +39,9 @@
     <script>
         lucide.createIcons();
         
-        // --- DB HELPERS ---
-        function openDB(){return new Promise(r=>{const q=indexedDB.open("BarpathDB",2);q.onsuccess=e=>r(e.target.result);q.onerror=()=>r(null)})}
+        // --- DB HELPERS (VERSION 3) ---
+        // CHANGED: Version 2 -> 3
+        function openDB(){return new Promise(r=>{const q=indexedDB.open("BarpathDB",3);q.onsuccess=e=>r(e.target.result);q.onerror=()=>r(null)})}
         
         async function getDataFromDB(store, id) {
             try {

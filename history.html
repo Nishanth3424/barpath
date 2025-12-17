@@ -40,8 +40,8 @@
     <script>
         lucide.createIcons();
         
-        // Use db helpers to check if heavy data exists
-        function openDB(){return new Promise(r=>{const q=indexedDB.open("BarpathDB",2);q.onsuccess=e=>r(e.target.result);q.onerror=()=>r(null)})}
+        // CHANGED: Version 2 -> 3
+        function openDB(){return new Promise(r=>{const q=indexedDB.open("BarpathDB",3);q.onsuccess=e=>r(e.target.result);q.onerror=()=>r(null)})}
 
         async function loadHistory() {
             const list = document.getElementById('historyList');
@@ -90,11 +90,7 @@
             const lift = history[i];
             
             if (lift) {
-                // We assume the DB has the heavy data if the ID matches
                 localStorage.setItem('lastResultId', lift.id);
-                // We create a fake "meta" object since we don't store full meta in history list to save space
-                // Ideally, history list SHOULD store the lightweight meta.
-                // For now, let's reconstruct minimal meta so the results page doesn't crash
                 const meta = {
                     metrics: {
                         technique_score: lift.score,
