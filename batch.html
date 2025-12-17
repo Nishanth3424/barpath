@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Batch - Barpath Pro</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
@@ -167,16 +168,9 @@
 
                         // 2. SAVE TO HISTORY (LIGHT)
                         const history = JSON.parse(localStorage.getItem('liftHistory') || '[]');
-                        
-                        // REMOVED THE DELETION LINES HERE.
-                        // We now keep the data structure consistent, but the heavy data is in IndexedDB
-                        // so we don't need to put it in localStorage.
-                        
                         const lightResult = { ...data };
-                        delete lightResult.rendered_video; // Still delete from *LocalStorage*
-                        delete lightResult.graphs;         // Still delete from *LocalStorage*
-                        // But since we saved them to IndexedDB above with the matching liftId, 
-                        // the results.html page will find them!
+                        delete lightResult.rendered_video; 
+                        delete lightResult.graphs;         
 
                         history.unshift({
                             id: liftId,
