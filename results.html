@@ -7,70 +7,24 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <style>
-        :root {
-            --glass-border: rgba(255, 255, 255, 0.1);
-            --glass-bg: rgba(20, 20, 25, 0.7);
-            --neon-blue: #2F80ED;
-            --neon-green: #22c55e;
-        }
-        
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif;
-            background-color: #000;
-            color: white;
-            -webkit-font-smoothing: antialiased;
-            overflow-x: hidden;
-        }
-
-        .mesh-bg {
-            position: fixed;
-            top: 0; left: 0; width: 100vw; height: 100vh;
-            background: radial-gradient(circle at 50% 0%, #1e1e24 0%, #000000 80%);
-            z-index: -1;
-        }
-
-        .glass-panel {
-            background: var(--glass-bg);
-            backdrop-filter: blur(20px);
-            -webkit-backdrop-filter: blur(20px);
-            border: 1px solid var(--glass-border);
-        }
-
-        .score-ring {
-            background: conic-gradient(var(--neon-blue) var(--percent), #333 0);
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            position: relative;
-        }
-        
-        .score-ring::before {
-            content: "";
-            position: absolute;
-            inset: 4px;
-            background: #000;
-            border-radius: 50%;
-        }
-
+        :root { --glass-border: rgba(255, 255, 255, 0.1); --glass-bg: rgba(20, 20, 25, 0.7); --neon-blue: #2F80ED; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", sans-serif; background: #000; color: white; -webkit-font-smoothing: antialiased; }
+        .mesh-bg { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: radial-gradient(circle at 50% 0%, #1a237e 0%, #000000 80%); z-index: -1; }
+        .glass-panel { background: var(--glass-bg); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border: 1px solid var(--glass-border); }
         .fade-in { animation: fadeIn 0.5s ease-out forwards; opacity: 0; transform: translateY(10px); }
-        .delay-100 { animation-delay: 0.1s; }
-        .delay-200 { animation-delay: 0.2s; }
-        .delay-300 { animation-delay: 0.3s; }
-
+        .delay-100 { animation-delay: 0.1s; } .delay-200 { animation-delay: 0.2s; }
         @keyframes fadeIn { to { opacity: 1; transform: translateY(0); } }
     </style>
 </head>
 <body class="pb-32">
-
     <div class="mesh-bg"></div>
 
     <nav class="fixed top-0 left-0 right-0 z-50 px-4 py-4 glass-panel border-b-0 bg-black/50">
         <div class="flex items-center justify-between max-w-lg mx-auto">
-            <button onclick="window.location.href='history.html'" class="p-2 rounded-full hover:bg-white/10 transition-colors">
+            <button onclick="window.location.href='index.html'" class="p-2 rounded-full hover:bg-white/10 transition-colors">
                 <i data-lucide="arrow-left" class="w-6 h-6 text-white"></i>
             </button>
-            <span class="font-semibold tracking-wide">Analysis</span>
+            <span class="font-semibold tracking-wide">Analysis Results</span>
             <div class="w-10"></div>
         </div>
     </nav>
@@ -84,134 +38,100 @@
 
     <script>
         lucide.createIcons();
-
-        // --- DATABASE HELPER ---
-        const dbName = "BarpathDB";
-        const storeName = "videos";
-        const DB_VERSION = 2; 
-
-        function openDB() {
-            return new Promise((resolve) => {
-                const request = indexedDB.open(dbName, DB_VERSION);
-                request.onsuccess = (e) => resolve(e.target.result);
-                request.onerror = () => resolve(null);
-            });
+        
+        // --- DB HELPERS ---
+        function openDB(){return new Promise(r=>{const q=indexedDB.open("BarpathDB",2);q.onsuccess=e=>r(e.target.result);q.onerror=()=>r(null)})}
+        
+        async function getDataFromDB(store, id) {
+            try {
+                const db = await openDB();
+                if(!db) return null;
+                return new Promise(r => {
+                    const tx = db.transaction(store, "readonly");
+                    const req = tx.objectStore(store).get(id);
+                    req.onsuccess = () => r(req.result);
+                    req.onerror = () => r(null);
+                });
+            } catch(e) { return null; }
         }
 
-        function getVideoFromDB(id) {
-            return new Promise(async (resolve) => {
-                try {
-                    const db = await openDB();
-                    if (!db || !db.objectStoreNames.contains(storeName)) { resolve(null); return; }
-                    const tx = db.transaction(storeName, "readonly");
-                    const req = tx.objectStore(storeName).get(id);
-                    req.onsuccess = () => resolve(req.result);
-                    req.onerror = () => resolve(null);
-                } catch(e) { resolve(null); }
-            });
-        }
+        const GRAPH_INFO = {
+            'barbell_xy_stable_path': { title: 'Bar Path (Stabilized)', desc: 'Pure movement with camera shake removed.' },
+            'barbell_lateral_corrected_path': { title: 'Perspective Corrected', desc: 'Corrects camera angle to show true path.' },
+            'vel_y_smooth': { title: 'Vertical Velocity', desc: 'Upward speed of the bar.' },
+            'accel_y_smooth': { title: 'Acceleration', desc: 'Force production.' },
+            'specific_power_y_smooth': { title: 'Specific Power', desc: 'Power to mass ratio.' }
+        };
 
-        // --- RENDER LOGIC ---
         (async function init() {
-            const rawData = localStorage.getItem('lastResult');
+            const rawMeta = localStorage.getItem('lastResultMeta');
             const container = document.getElementById('content');
 
-            if (!rawData) {
-                container.innerHTML = `<div class="text-center text-gray-400 mt-20">No data found.</div>`;
-                return;
-            }
+            if (!rawMeta) { container.innerHTML = `<div class="text-center text-gray-500 mt-10">No data found. Upload a video first.</div>`; return; }
 
-            const data = JSON.parse(rawData);
+            const data = JSON.parse(rawMeta);
             const liftId = parseInt(localStorage.getItem('lastResultId'));
-            let videoBase64 = null;
-            if (liftId) videoBase64 = await getVideoFromDB(liftId);
+            
+            // Fetch Heavy Data from DB
+            const videoBase64 = await getDataFromDB("videos", liftId);
+            const graphs = await getDataFromDB("graphs", liftId) || {};
 
             const m = data.metrics || {};
-            const graphs = data.graphs || {};
-            const critique = data.critique || [];
-            const score = Math.round(m.technique_score || 0);
-            const scoreColor = score > 80 ? '#22c55e' : (score > 60 ? '#eab308' : '#ef4444');
-
-            const videoHtml = videoBase64 ? `
-                <div class="fade-in mb-8 rounded-3xl overflow-hidden shadow-2xl border border-gray-800 bg-black aspect-[3/4] relative group">
-                    <video controls autoplay loop muted playsinline class="w-full h-full object-cover">
+            
+            // Video Player
+            let videoHtml = videoBase64 ? `
+                <div class="fade-in mb-6 rounded-3xl overflow-hidden shadow-2xl border border-gray-800 bg-black aspect-[9/16] relative">
+                    <video controls autoplay loop muted playsinline class="w-full h-full object-contain">
                         <source src="data:video/mp4;base64,${videoBase64}" type="video/mp4">
                     </video>
-                    <div class="absolute top-4 left-4 glass-panel px-3 py-1 rounded-full text-xs font-bold tracking-wider flex items-center gap-2">
-                        <span class="w-2 h-2 rounded-full bg-red-500 animate-pulse"></span>
-                        AI OVERLAY
+                    <div class="absolute top-4 left-4 glass-panel px-3 py-1 rounded-full text-[10px] font-bold tracking-wider flex items-center gap-2">
+                        <span class="w-2 h-2 rounded-full bg-red-500 animate-pulse"></span> AI OVERLAY
                     </div>
+                </div>` : `<div class="p-4 bg-red-900/20 text-red-400 rounded-xl text-center mb-6">Video storage limit reached.</div>`;
+
+            // Metrics
+            const metricsHtml = `
+            <div class="grid grid-cols-2 gap-3 mb-8 fade-in delay-100">
+                <div class="glass-panel p-4 rounded-2xl">
+                    <div class="text-gray-500 text-[10px] uppercase font-bold mb-1">Peak Velocity</div>
+                    <div class="text-2xl font-bold text-blue-400">${Math.round(m.peak_velocity || 0)} <span class="text-xs text-gray-500">px/s</span></div>
                 </div>
-            ` : '';
-
-            container.innerHTML = `
-                ${videoHtml}
-
-                <div class="fade-in delay-100 glass-panel p-6 rounded-3xl mb-4 flex items-center justify-between">
-                    <div>
-                        <div class="text-gray-400 text-xs font-bold uppercase tracking-widest mb-1">Technique Score</div>
-                        <div class="text-3xl font-bold text-white">${score} <span class="text-sm text-gray-500 font-normal">/ 100</span></div>
-                    </div>
-                    <div class="w-16 h-16 score-ring" style="--percent: ${score}%; background: conic-gradient(${scoreColor} ${score}%, #333 0);">
-                        <span class="relative text-white font-bold z-10">${score}</span>
-                    </div>
+                <div class="glass-panel p-4 rounded-2xl">
+                    <div class="text-gray-500 text-[10px] uppercase font-bold mb-1">Duration</div>
+                    <div class="text-2xl font-bold text-white">${(m.duration || 0).toFixed(2)} <span class="text-xs text-gray-500">s</span></div>
                 </div>
-
-                <div class="grid grid-cols-2 gap-3 mb-8 fade-in delay-200">
-                    <div class="glass-panel p-4 rounded-2xl">
-                        <div class="text-gray-500 text-[10px] uppercase font-bold mb-1">Velocity</div>
-                        <div class="text-xl font-bold text-blue-400">${Math.round(m.peak_velocity || 0)} <span class="text-xs text-gray-500">px/s</span></div>
-                    </div>
-                    <div class="glass-panel p-4 rounded-2xl">
-                        <div class="text-gray-500 text-[10px] uppercase font-bold mb-1">Power</div>
-                        <div class="text-xl font-bold text-purple-400">${(m.max_power || 0).toFixed(0)} <span class="text-xs text-gray-500">W</span></div>
-                    </div>
-                    <div class="glass-panel p-4 rounded-2xl">
-                        <div class="text-gray-500 text-[10px] uppercase font-bold mb-1">Path Dev</div>
-                        <div class="text-xl font-bold text-white">${Math.round(m.bar_path_length || 0)} <span class="text-xs text-gray-500">px</span></div>
-                    </div>
-                    <div class="glass-panel p-4 rounded-2xl">
-                        <div class="text-gray-500 text-[10px] uppercase font-bold mb-1">Duration</div>
-                        <div class="text-xl font-bold text-white">${(m.duration || 0).toFixed(1)} <span class="text-xs text-gray-500">s</span></div>
-                    </div>
+                <div class="glass-panel p-4 rounded-2xl">
+                    <div class="text-gray-500 text-[10px] uppercase font-bold mb-1">Technique Score</div>
+                    <div class="text-2xl font-bold text-green-400">${Math.round(m.technique_score || 0)}</div>
                 </div>
-
-                ${critique.length > 0 ? `
-                <div class="fade-in delay-300 mb-8">
-                    <h3 class="text-gray-500 text-xs font-bold uppercase tracking-widest mb-3 ml-1">AI Coach Feedback</h3>
-                    <div class="space-y-3">
-                        ${critique.map(c => `
-                            <div class="glass-panel p-4 rounded-2xl flex gap-3 items-start">
-                                <div class="mt-1 w-1.5 h-1.5 rounded-full bg-blue-500 flex-shrink-0 shadow-[0_0_10px_#3b82f6]"></div>
-                                <p class="text-sm text-gray-300 leading-relaxed">${c}</p>
-                            </div>
-                        `).join('')}
-                    </div>
+                 <div class="glass-panel p-4 rounded-2xl">
+                    <div class="text-gray-500 text-[10px] uppercase font-bold mb-1">Cam Angle</div>
+                    <div class="text-2xl font-bold text-purple-400">~45<span class="text-xs text-gray-500">°</span></div>
                 </div>
-                ` : ''}
+            </div>`;
 
-                <div class="space-y-6 pb-8 fade-in delay-300">
-                    ${renderGraph(graphs.barbell_xy_stable_path, "Bar Path", "Ideal path is nearly vertical.")}
-                    ${renderGraph(graphs.vel_y_smooth, "Velocity Curve", "Look for smooth acceleration.")}
-                </div>
-            `;
-            lucide.createIcons();
-        })();
-
-        function renderGraph(base64, title, subtitle) {
-            if (!base64) return '';
-            return `
+            // Graphs
+            let graphsHtml = '<div class="space-y-6 pb-8 fade-in delay-200">';
+            Object.keys(graphs).forEach(key => {
+                const info = GRAPH_INFO[key] || { title: key, desc: 'Analysis Graph' };
+                graphsHtml += `
                 <div class="glass-panel rounded-3xl overflow-hidden">
                     <div class="p-4 border-b border-white/5 bg-white/5">
-                        <h3 class="font-bold text-white text-sm">${title}</h3>
-                        <p class="text-xs text-gray-500">${subtitle}</p>
+                        <h3 class="font-bold text-white text-sm flex items-center gap-2">
+                            <i data-lucide="activity" class="w-4 h-4 text-blue-500"></i> ${info.title}
+                        </h3>
+                        <p class="text-xs text-gray-500 mt-1">${info.desc}</p>
                     </div>
-                    <div class="p-4 bg-white/90">
-                        <img src="data:image/png;base64,${base64}" class="w-full h-auto rounded-lg mix-blend-multiply">
+                    <div class="p-4 bg-white/95">
+                        <img src="data:image/png;base64,${graphs[key]}" class="w-full h-auto rounded-lg mix-blend-multiply">
                     </div>
-                </div>
-            `;
-        }
+                </div>`;
+            });
+            graphsHtml += '</div>';
+
+            container.innerHTML = videoHtml + metricsHtml + graphsHtml;
+            lucide.createIcons();
+        })();
     </script>
 </body>
 </html>
